@@ -6,7 +6,7 @@ COMPOSE_ETH := docker compose -f docker-compose.ethemeral.yml
 DB_URL      := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 DB_ETH      := postgres://$(ETHEMERAL_USER):$(ETHEMERAL_PASSWORD)@$(ETHEMERAL_HOST):$(ETHEMERAL_PORT)/$(ETHEMERAL_DB)?sslmode=disable
 ATLAS       := atlas
-SCHEMA      := ./migrations/schema.sql
+SCHEMA      := ./db/schema.sql
 
 .PHONY: up down eth-up eth-down schema-apply
 
