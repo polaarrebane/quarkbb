@@ -115,12 +115,11 @@ func registerTranslator(validate *validator.Validate) *ut.UniversalTranslator {
 }
 
 func createValidationErrors(ve validator.ValidationErrors, t ut.Translator) *ValidationErrors {
-	translations := ve.Translate(t)
-	errs := make([]ValidationError, 0, len(translations))
-	for field, msg := range translations {
+	errs := make([]ValidationError, 0, len(ve))
+	for _, fe := range ve {
 		errs = append(errs, ValidationError{
-			Field:   field,
-			Message: msg,
+			Field:   fe.Field(),
+			Message: fe.Translate(t),
 		})
 	}
 	return &ValidationErrors{Errors: errs}
