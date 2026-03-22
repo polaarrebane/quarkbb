@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.30.0
 
-package sqlc
+package postgres
 
 type User struct {
 	ID       int64

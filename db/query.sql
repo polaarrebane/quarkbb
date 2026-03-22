@@ -9,3 +9,7 @@ INSERT INTO users (
     $1, $2, $3
 )
 RETURNING id;
+
+-- name: FindUserByUsername :one
+SELECT * FROM users
+WHERE username = $1;

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/go-playground/locales/de"
 	"github.com/go-playground/locales/en"
@@ -18,38 +17,46 @@ import (
 	fr_translations "github.com/go-playground/validator/v10/translations/fr"
 )
 
-var (
-	_v    *Validator
-	_once sync.Once
-)
-
-func instance() *Validator {
-	_once.Do(func() {
-		_v = createValidator()
-	})
-	return _v
-}
-
 // Validator is a combination of a validator and a translator
-type Validator struct {
-	Uni      *ut.UniversalTranslator
-	Validate *validator.Validate
+type Validator interface {
+	ValidateCommand(cmd any, locale string) error
 }
 
-// ValidationError is a combination of a field's name and a message
+// New creates a new Validator instance with support for multiple locales.
+// It initializes the underlying validator and registers translators for
+// English, French, and German languages.
+func New() Validator {
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	uni := registerTranslator(validate)
+	validate.RegisterTagNameFunc(tagNameFunc)
+
+	return &validatorImpl{
+		Uni:      uni,
+		Validate: validate,
+	}
+}
+
+// ValidationError represents a single field validation error.
+// It contains the field name and the localized error message.
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
-// ValidationErrors is a set of validation errors
+// ValidationErrors represents a collection of validation errors.
+// It implements the error interface and provides a formatted error string.
 type ValidationErrors struct {
 	Errors []ValidationError `json:"errors"`
 }
 
-// ValidateCommand is a function for validate any api command
-func ValidateCommand(cmd any, locale string) error {
-	v := instance()
+type validatorImpl struct {
+	Uni      *ut.UniversalTranslator
+	Validate *validator.Validate
+}
+
+// ValidateCommand validates any API command struct using the configured validator.
+// The cmd parameter must be a struct with validation tags.
+func (v validatorImpl) ValidateCommand(cmd any, locale string) error {
 	err := v.Validate.Struct(cmd)
 	if err == nil {
 		return nil
@@ -60,26 +67,17 @@ func ValidateCommand(cmd any, locale string) error {
 		return fmt.Errorf("validator internal: %w", err)
 	}
 
-	return createValidationErrors(ve, getTranslator(v, locale))
+	return createValidationErrors(ve, getTranslator(v.Uni, locale))
 }
 
+// Error returns a formatted string representation of all validation errors.
+// Each error is formatted as "field: message" and separated by semicolons.
 func (ve *ValidationErrors) Error() string {
 	msgs := make([]string, 0, len(ve.Errors))
 	for _, e := range ve.Errors {
 		msgs = append(msgs, e.Field+": "+e.Message)
 	}
 	return strings.Join(msgs, "; ")
-}
-
-func createValidator() *Validator {
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	uni := registerTranslator(validate)
-	validate.RegisterTagNameFunc(tagNameFunc)
-
-	return &Validator{
-		Uni:      uni,
-		Validate: validate,
-	}
 }
 
 func tagNameFunc(fld reflect.StructField) string {
@@ -125,9 +123,9 @@ func createValidationErrors(ve validator.ValidationErrors, t ut.Translator) *Val
 	return &ValidationErrors{Errors: errs}
 }
 
-func getTranslator(v *Validator, locale string) ut.Translator {
-	if trans, ok := v.Uni.GetTranslator(locale); ok {
+func getTranslator(ut *ut.UniversalTranslator, locale string) ut.Translator {
+	if trans, ok := ut.GetTranslator(locale); ok {
 		return trans
 	}
-	return v.Uni.GetFallback()
+	return ut.GetFallback()
 }

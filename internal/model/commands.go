@@ -9,3 +9,9 @@ type RegisterUserCommand struct {
 	Email    string `json:"email"    validate:"required,email"`
 	Password string `json:"password" validate:"required,min=5"`
 }
+
+// LoginCommand represents the data required for login.
+type LoginCommand struct {
+	Username string `json:"username" validate:"required,printascii,min=3"`
+	Password string `json:"password" validate:"required,min=5"`
+}

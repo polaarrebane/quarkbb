@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,31 +13,29 @@ import (
 	"time"
 
 	"codeberg.org/ronia/quarkbb/internal/auth"
+	"codeberg.org/ronia/quarkbb/internal/config"
 	"codeberg.org/ronia/quarkbb/internal/repository"
-	"codeberg.org/ronia/quarkbb/internal/repository/sqlc"
+	"codeberg.org/ronia/quarkbb/internal/repository/postgres"
 	"codeberg.org/ronia/quarkbb/internal/router"
+	"codeberg.org/ronia/quarkbb/internal/security"
+	"codeberg.org/ronia/quarkbb/internal/validator"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spf13/viper"
 )
 
 // main is the application entry point. It initializes configuration,
 // database connection, HTTP server with all routes, and handles graceful shutdown.
 // The server supports user registration and authentication endpoints.
 func main() {
-	viper.SetConfigName("main")
-	viper.AddConfigPath("./config/")
-	if err := viper.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
-	}
-
-	dsn := viper.GetString("dsn")
-	host := viper.GetString("host")
-	port := viper.GetString("port")
 
 	startCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cfg, err := pgxpool.ParseConfig(dsn)
+	appConfig, err := config.New()
+	if err != nil {
+		log.Fatalf("loading config: %v", err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(appConfig.GetDSN())
 	if err != nil {
 		log.Fatalf("parse dsn: %v", err)
 	}
@@ -54,15 +51,22 @@ func main() {
 	}
 	defer pool.Close()
 
-	sqlcQueries := sqlc.New(pool)
+	sqlcQueries := postgres.New(pool)
 	authRepo := repository.NewUserRepository(sqlcQueries)
-	authSvc := auth.NewService(authRepo)
-	authHandler := auth.NewAuthHandler(*authSvc)
+
+	js, err := security.New(*appConfig)
+	if err != nil {
+		log.Fatalf("jwt service: %v", err)
+	}
+	authSvc := auth.NewService(authRepo, js)
+	val := validator.New()
+
+	authHandler := auth.NewHandler(authSvc, val)
 
 	r := router.NewRouter(authHandler)
 
 	srv := &http.Server{
-		Addr:              host + ":" + port,
+		Addr:              appConfig.GetHost() + ":" + appConfig.GetPort(),
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -71,7 +75,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Server starting on port %s", port)
+		log.Printf("Server starting on port %s", appConfig.GetPort())
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v\n", err)
 		}

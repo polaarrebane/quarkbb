@@ -4,33 +4,46 @@
 package auth
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
+	"codeberg.org/ronia/quarkbb/internal/validator"
+	v "codeberg.org/ronia/quarkbb/internal/validator"
 )
 
-// Handler processes HTTP requests for authentication endpoints.
-type Handler struct {
-	svc Service
+type handler struct {
+	svc AuthService
+	val validator.Validator
 }
 
-// NewAuthHandler creates a new authentication HTTP handler.
-func NewAuthHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+// Handler processes HTTP requests for authentication endpoints.
+type Handler interface {
+	Register(w http.ResponseWriter, r *http.Request)
+	Login(w http.ResponseWriter, r *http.Request)
+	JwtAuthMiddleware(next http.Handler) http.Handler
+}
+
+// NewHandler creates a new authentication HTTP handler.
+func NewHandler(svc AuthService, val validator.Validator) Handler {
+	return &handler{
+		svc: svc,
+		val: val,
+	}
 }
 
 // Register handles POST /api/v1/register requests.
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 	limitBodySize(w, r)
 
 	var cmd model.RegisterUserCommand
-	if resp, err := decodeAndValidateCommand(r, &cmd); err != nil {
+	if resp, err := h.decodeAndValidateCommand(r, &cmd); err != nil {
 		resp.Send(w)
 		return
 	}
 
-	data, err := h.svc.register(r.Context(), cmd)
+	data, err := h.svc.Register(r.Context(), cmd)
 	if err != nil {
 		switch {
 		case errors.Is(err, errUserAlreadyExists):
@@ -42,4 +55,66 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newCreatedResponse(data).Send(w)
+}
+
+// Login handles POST /api/v1/login requests.
+func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
+	limitBodySize(w, r)
+
+	var cmd model.LoginCommand
+	if resp, err := h.decodeAndValidateCommand(r, &cmd); err != nil {
+		resp.Send(w)
+		return
+	}
+
+	accessToken, refreshToken, err := h.svc.Login(r.Context(), cmd)
+	if err != nil {
+		switch {
+		case errors.Is(err, errUserNotFound):
+			newUserNotFoundResponse().Send(w)
+			return
+		case errors.Is(err, errWrongPassword):
+			newWrongPasswordResponse().Send(w)
+			return
+		}
+		newLoginFailedResponse().Send(w)
+		return
+	}
+
+	cookieRefreshToken := http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken.RawString,
+		Path:     "/auth",
+		MaxAge:   3600,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookieRefreshToken)
+	newSignedInResponse(accessToken).Send(w)
+}
+
+func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response, error) {
+	if err := h.decodeCommand(r, cmd); err != nil {
+		return newMalformedBodyResponse(), err
+	}
+
+	locale := parseLocale(r.Header.Get("Accept-Language"))
+	if err := h.val.ValidateCommand(cmd, locale); err != nil {
+		var ve *v.ValidationErrors
+		if errors.As(err, &ve) {
+			return newValidationErrorResponse(ve), err
+		}
+		return newInternalErrorResponse(), err
+	}
+
+	return nil, nil
+}
+
+func (h *handler) decodeCommand(r *http.Request, cmd any) error {
+	if err := json.NewDecoder(r.Body).Decode(cmd); err != nil {
+		return errors.New("decoding error")
+	}
+	return nil
 }

@@ -3,7 +3,7 @@
 //   sqlc v1.30.0
 // source: query.sql
 
-package sqlc
+package postgres
 
 import (
 	"context"
@@ -41,4 +41,21 @@ func (q *Queries) CreateUserAndReturnId(ctx context.Context, arg CreateUserAndRe
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const findUserByUsername = `-- name: FindUserByUsername :one
+SELECT id, username, email, password FROM users
+WHERE username = $1
+`
+
+func (q *Queries) FindUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRow(ctx, findUserByUsername, username)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.Password,
+	)
+	return i, err
 }

@@ -19,3 +19,9 @@ func GeneratePasswordHash(p string) (string, error) {
 	}
 	return string(hash), nil
 }
+
+// CheckPassword securely compares a plain text password with a bcrypt hash.
+func CheckPassword(password string, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}

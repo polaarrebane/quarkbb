@@ -79,6 +79,38 @@ func newUserAlreadyExistsResponse() *response {
 	}
 }
 
+func newSignedInResponse(data any) *response {
+	return &response{
+		data:   data,
+		err:    nil,
+		status: http.StatusOK,
+	}
+}
+
+func newUserNotFoundResponse() *response {
+	return &response{
+		data:   nil,
+		err:    errUserNotFound,
+		status: http.StatusBadRequest,
+	}
+}
+
+func newWrongPasswordResponse() *response {
+	return &response{
+		data:   nil,
+		err:    errWrongPassword,
+		status: http.StatusBadRequest,
+	}
+}
+
+func newLoginFailedResponse() *response {
+	return &response{
+		data:   nil,
+		err:    errInternalError,
+		status: http.StatusInternalServerError,
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

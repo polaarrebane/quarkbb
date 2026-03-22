@@ -7,8 +7,9 @@ import (
 	"codeberg.org/ronia/quarkbb/internal/model"
 )
 
-// UserRepository is an interface of repository of users
+// UserRepository defines the interface for user data access operations.
 type UserRepository interface {
 	CreateUser(ctx context.Context, user model.RegisterUserCommand) (*model.User, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
+	FindUserByUsername(ctx context.Context, username string) (*model.User, error)
 }

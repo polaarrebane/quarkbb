@@ -2,28 +2,28 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
-	"codeberg.org/ronia/quarkbb/internal/repository/sqlc"
+	"codeberg.org/ronia/quarkbb/internal/repository/postgres"
 )
 
-// UserRepositoryImplementation is a concrete implementation of the UserRepository interface.
-// It uses SQLC for type-safe database operations.
-type UserRepositoryImplementation struct {
-	q *sqlc.Queries
+type sqlUserRepository struct {
+	q *postgres.Queries
 }
 
-// NewUserRepository creates a new instance of the user repository implementation.
-func NewUserRepository(q *sqlc.Queries) *UserRepositoryImplementation {
-	return &UserRepositoryImplementation{
+// NewUserRepository creates a new UserRepository implementation using SQLC queries.
+func NewUserRepository(q *postgres.Queries) UserRepository {
+	return &sqlUserRepository{
 		q: q,
 	}
 }
 
-// CreateUser persists a new user in the database.
-func (ur UserRepositoryImplementation) CreateUser(ctx context.Context, user model.RegisterUserCommand) (*model.User, error) {
-	cmd := sqlc.CreateUserAndReturnIdParams{
+// CreateUser persists a new user to the database and returns the created user with ID.
+func (ur sqlUserRepository) CreateUser(ctx context.Context, user model.RegisterUserCommand) (*model.User, error) {
+	cmd := postgres.CreateUserAndReturnIdParams{
 		Username: user.Username,
 		Password: user.Password,
 		Email:    user.Email,
@@ -43,11 +43,29 @@ func (ur UserRepositoryImplementation) CreateUser(ctx context.Context, user mode
 }
 
 // UsernameExists checks if a user with the given username already exists in the database.
-func (ur UserRepositoryImplementation) UsernameExists(ctx context.Context, username string) (bool, error) {
+func (ur sqlUserRepository) UsernameExists(ctx context.Context, username string) (bool, error) {
 	count, err := ur.q.CountUserByUsername(ctx, username)
 	if err != nil {
 		return false, fmt.Errorf("count user by username: %w", err)
 	}
 
 	return count > 0, nil
+}
+
+// FindUserByUsername retrieves a user from the database by their username.
+// Returns the user model if found
+func (ur sqlUserRepository) FindUserByUsername(ctx context.Context, username string) (*model.User, error) {
+	user, err := ur.q.FindUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("user with username %s not found", username)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	return &model.User{
+		ID:       user.ID,
+		Username: user.Username,
+		Password: user.Password,
+		Email:    user.Email,
+	}, nil
 }
