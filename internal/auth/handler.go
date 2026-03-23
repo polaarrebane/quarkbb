@@ -8,32 +8,34 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
 	"codeberg.org/ronia/quarkbb/internal/validator"
 )
 
 type handler struct {
-	svc Service
-	val validator.Validator
+	svc       Service
+	validator validator.Validator
 }
 
 // Handler processes HTTP requests for authentication endpoints.
 type Handler interface {
 	Register(w http.ResponseWriter, r *http.Request)
 	Login(w http.ResponseWriter, r *http.Request)
+	Refresh(w http.ResponseWriter, r *http.Request)
 	JwtAuthMiddleware(next http.Handler) http.Handler
 }
 
 // NewHandler creates a new authentication HTTP handler.
 func NewHandler(svc Service, val validator.Validator) Handler {
 	return &handler{
-		svc: svc,
-		val: val,
+		svc:       svc,
+		validator: val,
 	}
 }
 
-// Register handles POST /api/v1/register requests.
+// Register handles POST /api/v1/auth/register requests.
 func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 	limitBodySize(w, r)
 
@@ -57,7 +59,7 @@ func (h *handler) Register(w http.ResponseWriter, r *http.Request) {
 	newCreatedResponse(data).Send(w)
 }
 
-// Login handles POST /api/v1/login requests.
+// Login handles POST /api/v1/auth/login requests.
 func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 	limitBodySize(w, r)
 
@@ -80,19 +82,42 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 		newLoginFailedResponse().Send(w)
 		return
 	}
+	h.setRefreshTokenCookie(w, refreshToken)
+	newAccessGrantedResponse(accessToken).Send(w)
+}
 
-	cookieRefreshToken := http.Cookie{
-		Name:     "refresh_token",
-		Value:    refreshToken.RawString,
-		Path:     "/auth",
-		MaxAge:   refreshToken.MaxAge,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+// Refresh handles POST /api/v1/auth/refresh requests.
+func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	tokenCookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
 	}
 
-	http.SetCookie(w, &cookieRefreshToken)
-	newSignedInResponse(accessToken).Send(w)
+	claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	jti := claims.ID
+	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	at, rt, err := h.svc.Refresh(r.Context(), model.RefreshCommand{
+		UserID: userID,
+		JTI:    jti,
+	})
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	h.setRefreshTokenCookie(w, rt)
+	newAccessGrantedResponse(at).Send(w)
 }
 
 func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response, error) {
@@ -101,7 +126,7 @@ func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response,
 	}
 
 	locale := parseLocale(r.Header.Get("Accept-Language"))
-	if err := h.val.ValidateCommand(cmd, locale); err != nil {
+	if err := h.validator.ValidateCommand(cmd, locale); err != nil {
 		var ve *validator.ValidationErrors
 		if errors.As(err, &ve) {
 			return newValidationErrorResponse(ve), err
@@ -117,4 +142,18 @@ func (h *handler) decodeCommand(r *http.Request, cmd any) error {
 		return fmt.Errorf("decode request body: %w", err)
 	}
 	return nil
+}
+
+func (h *handler) setRefreshTokenCookie(w http.ResponseWriter, rt *refreshToken) {
+	cookieRefreshToken := http.Cookie{
+		Name:     "refresh_token",
+		Value:    rt.RawString,
+		Path:     "/api/v1/auth",
+		MaxAge:   rt.MaxAge,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookieRefreshToken)
 }

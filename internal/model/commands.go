@@ -1,6 +1,3 @@
-// Package model contains all domain models and data transfer objects.
-// It defines the core data structures used throughout the application,
-// including user entities, command objects, and request/response models.
 package model
 
 // RegisterUserCommand represents the data required for user registration.
@@ -14,4 +11,10 @@ type RegisterUserCommand struct {
 type LoginCommand struct {
 	Username string `json:"username" validate:"required,printascii,min=3"`
 	Password string `json:"password" validate:"required,min=5"`
+}
+
+// RefreshCommand represents the data required for refresh an auth token.
+type RefreshCommand struct {
+	UserID int64  `json:"userid"`
+	JTI    string `json:"jti"`
 }

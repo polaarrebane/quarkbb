@@ -35,7 +35,7 @@ func main() {
 		log.Fatalf("loading config: %v", err)
 	}
 
-	cfg, err := pgxpool.ParseConfig(appConfig.GetDSN())
+	cfg, err := pgxpool.ParseConfig(appConfig.DSN())
 	if err != nil {
 		log.Fatalf("parse dsn: %v", err)
 	}
@@ -53,12 +53,13 @@ func main() {
 
 	sqlcQueries := postgres.New(pool)
 	authRepo := repository.NewUserRepository(sqlcQueries)
+	rtRepo := repository.NewRefreshTokenRepository(sqlcQueries)
 
-	js, err := security.New(*appConfig)
+	js, err := security.NewJWTService(*appConfig)
 	if err != nil {
 		log.Fatalf("jwt service: %v", err)
 	}
-	authSvc := auth.NewService(authRepo, js)
+	authSvc := auth.NewService(authRepo, rtRepo, js)
 	val := validator.New()
 
 	authHandler := auth.NewHandler(authSvc, val)
@@ -66,7 +67,7 @@ func main() {
 	r := router.NewRouter(authHandler)
 
 	srv := &http.Server{
-		Addr:              appConfig.GetHost() + ":" + appConfig.GetPort(),
+		Addr:              appConfig.Host() + ":" + appConfig.Port(),
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -75,7 +76,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Server starting on port %s", appConfig.GetPort())
+		log.Printf("Server starting on port %s", appConfig.Port())
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v\n", err)
 		}

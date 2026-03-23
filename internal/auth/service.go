@@ -40,8 +40,9 @@ type refreshToken struct {
 }
 
 type serviceImpl struct {
-	r  repository.UserRepository // Repository for database operations
-	js security.JWTService
+	users  repository.UserRepository
+	tokens repository.RefreshTokenRepository
+	jwt    security.JWTService
 }
 
 // Service provides authentication and user management business logic.
@@ -50,16 +51,21 @@ type serviceImpl struct {
 type Service interface {
 	Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error)
 	Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error)
+	Refresh(ctx context.Context, c model.RefreshCommand) (*accessToken, *refreshToken, error)
 	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
+	VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error)
 }
 
 // NewService creates a new instance of the authentication service.
-// It requires a UserRepository implementation for data access operations.
-// Returns a pointer to the initialized Service.
-func NewService(r repository.UserRepository, js security.JWTService) Service {
+func NewService(
+	ru repository.UserRepository,
+	rt repository.RefreshTokenRepository,
+	js security.JWTService,
+) Service {
 	return &serviceImpl{
-		r:  r,
-		js: js,
+		users:  ru,
+		tokens: rt,
+		jwt:    js,
 	}
 }
 
@@ -67,9 +73,18 @@ func NewService(r repository.UserRepository, js security.JWTService) Service {
 // It verifies the signature, expiration, and other JWT claims.
 // Returns an error if the token is invalid or expired.
 func (svc serviceImpl) VerifyAuthToken(tokenString string) (*security.AuthClaims, error) {
-	claims, err := svc.js.VerifyAuthToken(tokenString)
+	claims, err := svc.jwt.VerifyAuthToken(tokenString)
 	if err != nil {
 		return nil, fmt.Errorf("verify auth token: %w", err)
+	}
+	return claims, nil
+}
+
+// VerifyRefreshToken validates a refresh token string and returns the claims.
+func (svc serviceImpl) VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error) {
+	claims, err := svc.jwt.VerifyRefreshToken(tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("verify refresh token: %w", err)
 	}
 	return claims, nil
 }
@@ -79,7 +94,7 @@ func (svc serviceImpl) VerifyAuthToken(tokenString string) (*security.AuthClaims
 // and persists the user data to the database.
 // Returns the registered user information or an appropriate error.
 func (svc serviceImpl) Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error) {
-	exists, err := svc.r.UsernameExists(ctx, c.Username)
+	exists, err := svc.users.UsernameExists(ctx, c.Username)
 	if err != nil {
 		// todo: add log
 		return nil, errRegistrationFailed
@@ -101,7 +116,7 @@ func (svc serviceImpl) Register(ctx context.Context, c model.RegisterUserCommand
 		Password: hash,
 	}
 
-	user, err := svc.r.CreateUser(ctx, cmd)
+	user, err := svc.users.CreateUser(ctx, cmd)
 	if err != nil {
 		// todo: add log
 		return nil, errRegistrationFailed
@@ -119,7 +134,7 @@ func (svc serviceImpl) Register(ctx context.Context, c model.RegisterUserCommand
 // It validates credentials and generates both access and refresh tokens.
 // Returns token pair on success or appropriate authentication error.
 func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error) {
-	user, err := svc.r.FindUserByUsername(ctx, c.Username)
+	user, err := svc.users.FindUserByUsername(ctx, c.Username)
 	if err != nil {
 		var nfe *repository.NotFoundError
 		if errors.As(err, &nfe) {
@@ -132,9 +147,49 @@ func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*access
 		return nil, nil, errWrongPassword
 	}
 
-	username := user.Username
-	userID := fmt.Sprintf("%d", user.ID)
-	tokens, _ := svc.js.GenerateTokenPair(username, userID)
+	at, rt, err := svc.createTokenPair(user)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create token pair: %w", err)
+	}
+	return at, rt, nil
+}
+
+// Refresh an auth token.
+func (svc serviceImpl) Refresh(ctx context.Context, cmd model.RefreshCommand) (*accessToken, *refreshToken, error) {
+	user, err := svc.users.GetUserByID(ctx, cmd.UserID)
+	if err != nil {
+		var nfe *repository.NotFoundError
+		if errors.As(err, &nfe) {
+			return nil, nil, errUserNotFound
+		}
+		return nil, nil, errRefreshFailed
+	}
+
+	used, err := svc.tokens.RefreshTokenUsed(ctx, cmd.JTI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database error: %w", err)
+	}
+	if used {
+		// todo: revoke all sessions
+		return nil, nil, errors.New("used token detected")
+	}
+
+	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.JTI); err != nil {
+		return nil, nil, fmt.Errorf("database error: %w", err)
+	}
+
+	at, rt, err := svc.createTokenPair(user)
+	if err != nil {
+		return nil, nil, fmt.Errorf("refresh error: %w", err)
+	}
+	return at, rt, nil
+}
+
+func (svc serviceImpl) createTokenPair(user *model.User) (*accessToken, *refreshToken, error) {
+	tokens, err := svc.jwt.GenerateTokenPair(user.Username, fmt.Sprintf("%d", user.ID))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create token pair error: %w", err)
+	}
 	at := &accessToken{
 		RawString: tokens.AccessToken,
 		ExpiresIn: tokens.AccessExpiresIn,

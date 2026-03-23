@@ -4,6 +4,15 @@
 
 package postgres
 
+import (
+	"github.com/google/uuid"
+)
+
+type UsedRefreshToken struct {
+	ID  int64
+	Jti uuid.UUID
+}
+
 type User struct {
 	ID       int64
 	Username string

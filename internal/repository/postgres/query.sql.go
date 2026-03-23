@@ -7,7 +7,21 @@ package postgres
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
+
+const countUsedRefreshTokenByJTI = `-- name: CountUsedRefreshTokenByJTI :one
+SELECT count(*) FROM used_refresh_tokens
+WHERE jti = $1
+`
+
+func (q *Queries) CountUsedRefreshTokenByJTI(ctx context.Context, jti uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsedRefreshTokenByJTI, jti)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const countUserByUsername = `-- name: CountUserByUsername :one
 SELECT count(*) FROM users
@@ -58,4 +72,34 @@ func (q *Queries) FindUserByUsername(ctx context.Context, username string) (User
 		&i.Password,
 	)
 	return i, err
+}
+
+const getUserById = `-- name: GetUserById :one
+SELECT id, username, email, password FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserById(ctx context.Context, id int64) (User, error) {
+	row := q.db.QueryRow(ctx, getUserById, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.Password,
+	)
+	return i, err
+}
+
+const markTokenAsUsed = `-- name: MarkTokenAsUsed :exec
+INSERT INTO used_refresh_tokens (
+    jti
+) VALUES (
+    $1
+)
+`
+
+func (q *Queries) MarkTokenAsUsed(ctx context.Context, jti uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markTokenAsUsed, jti)
+	return err
 }

@@ -15,4 +15,5 @@ const (
 	errLoginFailed        authError = "login failed"
 	errUserNotFound       authError = "user not found"
 	errWrongPassword      authError = "wrong password"
+	errRefreshFailed      authError = "refresh failed"
 )

@@ -79,7 +79,7 @@ func newUserAlreadyExistsResponse() *response {
 	}
 }
 
-func newSignedInResponse(data any) *response {
+func newAccessGrantedResponse(data any) *response {
 	return &response{
 		data:   data,
 		err:    nil,

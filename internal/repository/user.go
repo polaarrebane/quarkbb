@@ -52,8 +52,26 @@ func (ur sqlUserRepository) UsernameExists(ctx context.Context, username string)
 	return count > 0, nil
 }
 
+// GetUserByID retrieves a user from the database by their id.
+// Returns the user model if found. If not, NotFoundError
+func (ur sqlUserRepository) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
+	user, err := ur.q.GetUserById(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &NotFoundError{Entity: "user", Key: fmt.Sprintf("%d", id)}
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	return &model.User{
+		ID:       user.ID,
+		Username: user.Username,
+		Password: user.Password,
+		Email:    user.Email,
+	}, nil
+}
+
 // FindUserByUsername retrieves a user from the database by their username.
-// Returns the user model if found
+// Returns the user model if found.
 func (ur sqlUserRepository) FindUserByUsername(ctx context.Context, username string) (*model.User, error) {
 	user, err := ur.q.FindUserByUsername(ctx, username)
 	if err != nil {

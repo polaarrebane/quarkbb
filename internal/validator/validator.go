@@ -31,8 +31,8 @@ func New() Validator {
 	validate.RegisterTagNameFunc(tagNameFunc)
 
 	return &validatorImpl{
-		Uni:      uni,
-		Validate: validate,
+		uni:      uni,
+		validate: validate,
 	}
 }
 
@@ -50,14 +50,14 @@ type ValidationErrors struct {
 }
 
 type validatorImpl struct {
-	Uni      *ut.UniversalTranslator
-	Validate *validator.Validate
+	uni      *ut.UniversalTranslator
+	validate *validator.Validate
 }
 
 // ValidateCommand validates any API command struct using the configured validator.
 // The cmd parameter must be a struct with validation tags.
 func (v validatorImpl) ValidateCommand(cmd any, locale string) error {
-	err := v.Validate.Struct(cmd)
+	err := v.validate.Struct(cmd)
 	if err == nil {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (v validatorImpl) ValidateCommand(cmd any, locale string) error {
 		return fmt.Errorf("validator internal: %w", err)
 	}
 
-	return createValidationErrors(ve, getTranslator(v.Uni, locale))
+	return createValidationErrors(ve, getTranslator(v.uni, locale))
 }
 
 // Error returns a formatted string representation of all validation errors.

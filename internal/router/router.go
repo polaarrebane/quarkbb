@@ -12,8 +12,9 @@ import (
 // NewRouter creates and configures the HTTP router with authentication middleware.
 func NewRouter(auth auth.Handler) http.Handler {
 	r := chi.NewRouter()
-	r.Post("/api/v1/login", auth.Login)
-	r.Post("/api/v1/register", auth.Register)
+	r.Post("/api/v1/auth/login", auth.Login)
+	r.Post("/api/v1/auth/register", auth.Register)
+	r.Post("/api/v1/auth/refresh", auth.Refresh)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(auth.JwtAuthMiddleware)

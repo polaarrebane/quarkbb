@@ -44,34 +44,34 @@ func New() (*Config, error) {
 	}, nil
 }
 
-// GetHost returns the server host address from configuration.
-func (c *Config) GetHost() string {
+// Host returns the server host address from configuration.
+func (c *Config) Host() string {
 	return c.host
 }
 
-// GetPort returns the server port number from configuration.
-func (c *Config) GetPort() string {
+// Port returns the server port number from configuration.
+func (c *Config) Port() string {
 	return c.port
 }
 
-// GetKeys returns the key identifier for JWT token signing.
+// Keys returns the key identifier for JWT token signing.
 // This corresponds to the directory name containing the PEM key files.
-func (c *Config) GetKeys() string {
+func (c *Config) Keys() string {
 	return c.keys
 }
 
-// GetDSN returns the database connection string.
+// DSN returns the database connection string.
 // Used for establishing connection to the PostgreSQL database.
-func (c *Config) GetDSN() string {
+func (c *Config) DSN() string {
 	return c.dsn
 }
 
-// GetAuthTokenTTL returns the auth token ttl in seconds.
-func (c *Config) GetAuthTokenTTL() int {
+// AuthTokenTTL returns the auth token ttl in seconds.
+func (c *Config) AuthTokenTTL() int {
 	return c.authTokenTTL
 }
 
-// GetRefreshTokenTTL returns the refresh token ttl in seconds.
-func (c *Config) GetRefreshTokenTTL() int {
+// RefreshTokenTTL returns the refresh token ttl in seconds.
+func (c *Config) RefreshTokenTTL() int {
 	return c.refreshTokenTTL
 }

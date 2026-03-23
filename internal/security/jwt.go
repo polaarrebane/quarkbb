@@ -31,10 +31,10 @@ type jwtServiceImpl struct {
 	refreshTokenTTL int
 }
 
-// New creates a new JWTService instance with ECDSA key pair.
+// NewJWTService creates a new JWTService instance with ECDSA key pair.
 // It loads private and public keys from the configured secrets directory.
-func New(c config.Config) (JWTService, error) {
-	keyID := c.GetKeys()
+func NewJWTService(c config.Config) (JWTService, error) {
+	keyID := c.Keys()
 
 	path := "secrets/keys/" + keyID + "/private.pem"
 	privateKey, err := loadPrivateKey(path)
@@ -53,8 +53,8 @@ func New(c config.Config) (JWTService, error) {
 		publicKey:       publicKey,
 		audience:        "https://quarkbb.org",
 		issuer:          "https://quarkbb.org",
-		authTokenTTL:    c.GetAuthTokenTTL(),
-		refreshTokenTTL: c.GetRefreshTokenTTL(),
+		authTokenTTL:    c.AuthTokenTTL(),
+		refreshTokenTTL: c.RefreshTokenTTL(),
 	}, nil
 }
 
@@ -94,7 +94,7 @@ func (js *jwtServiceImpl) newAuthToken(username string, userid string, t time.Ti
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),
-			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.authTokenTTL))),
+			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.authTokenTTL * int(time.Second)))),
 			Issuer:    js.issuer,
 			Subject:   userid,
 			Audience:  jwt.ClaimStrings{js.audience},
@@ -112,7 +112,7 @@ func (js *jwtServiceImpl) newRefreshToken(userid string, t time.Time) string {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),
-			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.refreshTokenTTL))),
+			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.refreshTokenTTL * int(time.Second)))),
 			Issuer:    js.issuer,
 			Subject:   userid,
 			Audience:  jwt.ClaimStrings{js.audience},
