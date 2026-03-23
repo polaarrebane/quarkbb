@@ -1,15 +1,18 @@
 package auth
 
-import (
-	"errors"
-)
+// authError is an unexported type so sentinel values cannot be
+// created or compared outside this package.
+type authError string
 
-var (
-	errMalformedBody      = errors.New("malformed request body")
-	errValidationError    = errors.New("validation error")
-	errInternalError      = errors.New("internal error")
-	errRegistrationFailed = errors.New("registration failed")
-	errUserAlreadyExists  = errors.New("user already exists")
-	errUserNotFound       = errors.New("user not found")
-	errWrongPassword      = errors.New("wrong password")
+func (e authError) Error() string { return string(e) }
+
+const (
+	errMalformedBody      authError = "malformed request body"
+	errValidationError    authError = "validation error"
+	errInternalError      authError = "internal error"
+	errRegistrationFailed authError = "registration failed"
+	errUserAlreadyExists  authError = "user already exists"
+	errLoginFailed        authError = "login failed"
+	errUserNotFound       authError = "user not found"
+	errWrongPassword      authError = "wrong password"
 )

@@ -17,9 +17,11 @@ func NewRouter(auth auth.Handler) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(auth.JwtAuthMiddleware)
-		r.Get("/protected", func(w http.ResponseWriter, r *http.Request) {
+		r.Get("/protected", func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode("it works")
+			if err := json.NewEncoder(w).Encode("it works"); err != nil {
+				http.Error(w, "failed to encode response", http.StatusInternalServerError)
+			}
 		})
 	})
 	return r

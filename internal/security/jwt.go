@@ -127,7 +127,7 @@ func (js *jwtServiceImpl) newRefreshToken(userid string, t time.Time) string {
 func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read private key file %q: %w", path, err)
 	}
 	block, _ := pem.Decode(data)
 	if block == nil {
@@ -136,7 +136,7 @@ func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse private key: %w", err)
 	}
 
 	ecKey, ok := key.(*ecdsa.PrivateKey)
@@ -149,7 +149,7 @@ func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 func loadPublicKey(path string) (*ecdsa.PublicKey, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read public key file %q: %w", path, err)
 	}
 	block, _ := pem.Decode(data)
 	if block == nil {
@@ -157,7 +157,7 @@ func loadPublicKey(path string) (*ecdsa.PublicKey, error) {
 	}
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse public key: %w", err)
 	}
 	key, ok := pub.(*ecdsa.PublicKey)
 	if !ok {
@@ -191,7 +191,7 @@ func (js *jwtServiceImpl) VerifyRefreshToken(tokenString string) (*RefreshClaims
 }
 
 func (js *jwtServiceImpl) parseTokenString(tokenString string, claims jwt.Claims) (*jwt.Token, error) {
-	return jwt.ParseWithClaims(
+	token, err := jwt.ParseWithClaims(
 		tokenString,
 		claims,
 		func(t *jwt.Token) (any, error) {
@@ -204,4 +204,8 @@ func (js *jwtServiceImpl) parseTokenString(tokenString string, claims jwt.Claims
 		jwt.WithIssuer(js.issuer),
 		jwt.WithExpirationRequired(),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("verify auth token: %w", err)
+	}
+	return token, nil
 }

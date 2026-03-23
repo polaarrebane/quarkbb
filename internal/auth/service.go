@@ -2,11 +2,12 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
-	r "codeberg.org/ronia/quarkbb/internal/repository"
+	"codeberg.org/ronia/quarkbb/internal/repository"
 	"codeberg.org/ronia/quarkbb/internal/security"
 )
 
@@ -38,15 +39,15 @@ type refreshToken struct {
 	RawString string `json:"refresh_token"`
 }
 
-type authServiceImpl struct {
-	r  r.UserRepository // Repository for database operations
+type serviceImpl struct {
+	r  repository.UserRepository // Repository for database operations
 	js security.JWTService
 }
 
 // Service provides authentication and user management business logic.
 // It acts as the intermediate layer between HTTP handlers and the repository layer,
 // implementing validation, security checks, and business rules.
-type AuthService interface {
+type Service interface {
 	Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error)
 	Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error)
 	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
@@ -55,8 +56,8 @@ type AuthService interface {
 // NewService creates a new instance of the authentication service.
 // It requires a UserRepository implementation for data access operations.
 // Returns a pointer to the initialized Service.
-func NewService(r r.UserRepository, js security.JWTService) AuthService {
-	return &authServiceImpl{
+func NewService(r repository.UserRepository, js security.JWTService) Service {
+	return &serviceImpl{
 		r:  r,
 		js: js,
 	}
@@ -65,15 +66,19 @@ func NewService(r r.UserRepository, js security.JWTService) AuthService {
 // VerifyAuthToken validates an access token string and returns the claims.
 // It verifies the signature, expiration, and other JWT claims.
 // Returns an error if the token is invalid or expired.
-func (svc authServiceImpl) VerifyAuthToken(tokenString string) (*security.AuthClaims, error) {
-	return svc.js.VerifyAuthToken(tokenString)
+func (svc serviceImpl) VerifyAuthToken(tokenString string) (*security.AuthClaims, error) {
+	claims, err := svc.js.VerifyAuthToken(tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("verify auth token: %w", err)
+	}
+	return claims, nil
 }
 
 // Register creates a new user account in the system.
 // It validates that the username doesn't exist, hashes the password,
 // and persists the user data to the database.
 // Returns the registered user information or an appropriate error.
-func (svc authServiceImpl) Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error) {
+func (svc serviceImpl) Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error) {
 	exists, err := svc.r.UsernameExists(ctx, c.Username)
 	if err != nil {
 		// todo: add log
@@ -113,10 +118,14 @@ func (svc authServiceImpl) Register(ctx context.Context, c model.RegisterUserCom
 // Login authenticates a user with username and password.
 // It validates credentials and generates both access and refresh tokens.
 // Returns token pair on success or appropriate authentication error.
-func (svc authServiceImpl) Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error) {
+func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error) {
 	user, err := svc.r.FindUserByUsername(ctx, c.Username)
 	if err != nil {
-		return nil, nil, errUserNotFound
+		var nfe *repository.NotFoundError
+		if errors.As(err, &nfe) {
+			return nil, nil, errUserNotFound
+		}
+		return nil, nil, errLoginFailed
 	}
 
 	if !security.CheckPassword(c.Password, user.Password) {

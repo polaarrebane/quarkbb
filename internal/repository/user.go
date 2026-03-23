@@ -58,7 +58,7 @@ func (ur sqlUserRepository) FindUserByUsername(ctx context.Context, username str
 	user, err := ur.q.FindUserByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("user with username %s not found", username)
+			return nil, &NotFoundError{Entity: "user", Key: username}
 		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}

@@ -6,15 +6,15 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
 	"codeberg.org/ronia/quarkbb/internal/validator"
-	v "codeberg.org/ronia/quarkbb/internal/validator"
 )
 
 type handler struct {
-	svc AuthService
+	svc Service
 	val validator.Validator
 }
 
@@ -26,7 +26,7 @@ type Handler interface {
 }
 
 // NewHandler creates a new authentication HTTP handler.
-func NewHandler(svc AuthService, val validator.Validator) Handler {
+func NewHandler(svc Service, val validator.Validator) Handler {
 	return &handler{
 		svc: svc,
 		val: val,
@@ -102,7 +102,7 @@ func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response,
 
 	locale := parseLocale(r.Header.Get("Accept-Language"))
 	if err := h.val.ValidateCommand(cmd, locale); err != nil {
-		var ve *v.ValidationErrors
+		var ve *validator.ValidationErrors
 		if errors.As(err, &ve) {
 			return newValidationErrorResponse(ve), err
 		}
@@ -114,7 +114,7 @@ func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response,
 
 func (h *handler) decodeCommand(r *http.Request, cmd any) error {
 	if err := json.NewDecoder(r.Body).Decode(cmd); err != nil {
-		return errors.New("decoding error")
+		return fmt.Errorf("decode request body: %w", err)
 	}
 	return nil
 }

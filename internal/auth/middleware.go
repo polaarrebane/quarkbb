@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+type contextKey struct{}
+
+var userContextKey = contextKey{}
+
 func (h *handler) JwtAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, err := extractBearerToken(r)
@@ -21,7 +25,7 @@ func (h *handler) JwtAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "user", claims)
+		ctx := context.WithValue(r.Context(), userContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
