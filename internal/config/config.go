@@ -9,10 +9,12 @@ import (
 
 // Config holds application configuration values loaded from config file.
 type Config struct {
-	dsn  string
-	host string
-	port string
-	keys string
+	dsn             string
+	host            string
+	port            string
+	keys            string
+	authTokenTTL    int
+	refreshTokenTTL int
 }
 
 // New creates a new Config instance by reading configuration from file.
@@ -29,12 +31,16 @@ func New() (*Config, error) {
 	host := viper.GetString("host")
 	port := viper.GetString("port")
 	keys := viper.GetString("keys")
+	authTokenTTL := viper.GetInt("auth_token_ttl")
+	refreshTokenTTL := viper.GetInt("refresh_token_ttl")
 
 	return &Config{
-		dsn:  dsn,
-		host: host,
-		port: port,
-		keys: keys,
+		dsn:             dsn,
+		host:            host,
+		port:            port,
+		keys:            keys,
+		authTokenTTL:    authTokenTTL,
+		refreshTokenTTL: refreshTokenTTL,
 	}, nil
 }
 
@@ -58,4 +64,14 @@ func (c *Config) GetKeys() string {
 // Used for establishing connection to the PostgreSQL database.
 func (c *Config) GetDSN() string {
 	return c.dsn
+}
+
+// GetAuthTokenTTL returns the auth token ttl in seconds.
+func (c *Config) GetAuthTokenTTL() int {
+	return c.authTokenTTL
+}
+
+// GetRefreshTokenTTL returns the refresh token ttl in seconds.
+func (c *Config) GetRefreshTokenTTL() int {
+	return c.refreshTokenTTL
 }

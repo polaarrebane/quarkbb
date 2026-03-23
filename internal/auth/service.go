@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
 	"codeberg.org/ronia/quarkbb/internal/repository"
@@ -29,7 +28,7 @@ type signedInUser struct {
 // It contains the token string, expiration time, and user information.
 type accessToken struct {
 	RawString string       `json:"access_token"`
-	ExpiresIn time.Time    `json:"expires_in"`
+	ExpiresIn int          `json:"expires_in"`
 	User      signedInUser `json:"user"`
 }
 
@@ -37,6 +36,7 @@ type accessToken struct {
 // It contains only the raw token string for client-side storage.
 type refreshToken struct {
 	RawString string `json:"refresh_token"`
+	MaxAge    int    `json:"expires_in"`
 }
 
 type serviceImpl struct {
@@ -145,6 +145,7 @@ func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*access
 	}
 	rt := &refreshToken{
 		RawString: tokens.RefreshToken,
+		MaxAge:    tokens.RefreshExpiresIn,
 	}
 	return at, rt, nil
 }

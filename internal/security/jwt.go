@@ -14,9 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const authTokenTTL = 15        // minutes
-const refreshTokenTTL = 24 * 7 // hours
-
 // JWTService provides JWT token generation and verification functionality.
 type JWTService interface {
 	GenerateTokenPair(username string, userid string) (*TokenPair, error)
@@ -25,11 +22,13 @@ type JWTService interface {
 }
 
 type jwtServiceImpl struct {
-	privateKey *ecdsa.PrivateKey
-	publicKey  *ecdsa.PublicKey
-	keyID      string
-	audience   string
-	issuer     string
+	privateKey      *ecdsa.PrivateKey
+	publicKey       *ecdsa.PublicKey
+	keyID           string
+	audience        string
+	issuer          string
+	authTokenTTL    int
+	refreshTokenTTL int
 }
 
 // New creates a new JWTService instance with ECDSA key pair.
@@ -50,10 +49,12 @@ func New(c config.Config) (JWTService, error) {
 	}
 
 	return &jwtServiceImpl{
-		privateKey: privateKey,
-		publicKey:  publicKey,
-		audience:   "https://quarkbb.org",
-		issuer:     "https://quarkbb.org",
+		privateKey:      privateKey,
+		publicKey:       publicKey,
+		audience:        "https://quarkbb.org",
+		issuer:          "https://quarkbb.org",
+		authTokenTTL:    c.GetAuthTokenTTL(),
+		refreshTokenTTL: c.GetRefreshTokenTTL(),
 	}, nil
 }
 
@@ -61,8 +62,8 @@ func New(c config.Config) (JWTService, error) {
 type TokenPair struct {
 	AccessToken      string
 	RefreshToken     string
-	AccessExpiresIn  time.Time
-	RefreshExpiresIn time.Time
+	AccessExpiresIn  int
+	RefreshExpiresIn int
 }
 
 // AuthClaims represents the claims stored in JWT access tokens.
@@ -82,8 +83,8 @@ func (js *jwtServiceImpl) GenerateTokenPair(username string, userid string) (*To
 	return &TokenPair{
 		AccessToken:      js.newAuthToken(username, userid, now),
 		RefreshToken:     js.newRefreshToken(userid, now),
-		AccessExpiresIn:  now.Add(15 * time.Minute),
-		RefreshExpiresIn: now.Add(refreshTokenTTL * time.Hour),
+		AccessExpiresIn:  js.authTokenTTL,
+		RefreshExpiresIn: js.refreshTokenTTL,
 	}, nil
 }
 
@@ -93,7 +94,7 @@ func (js *jwtServiceImpl) newAuthToken(username string, userid string, t time.Ti
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),
-			ExpiresAt: jwt.NewNumericDate(t.Add(authTokenTTL * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.authTokenTTL))),
 			Issuer:    js.issuer,
 			Subject:   userid,
 			Audience:  jwt.ClaimStrings{js.audience},
@@ -111,7 +112,7 @@ func (js *jwtServiceImpl) newRefreshToken(userid string, t time.Time) string {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),
-			ExpiresAt: jwt.NewNumericDate(t.Add(refreshTokenTTL * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.refreshTokenTTL))),
 			Issuer:    js.issuer,
 			Subject:   userid,
 			Audience:  jwt.ClaimStrings{js.audience},

@@ -85,7 +85,7 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 		Name:     "refresh_token",
 		Value:    refreshToken.RawString,
 		Path:     "/auth",
-		MaxAge:   3600,
+		MaxAge:   refreshToken.MaxAge,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,

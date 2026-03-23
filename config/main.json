@@ -2,5 +2,7 @@
   "host": "0.0.0.0",
   "port": "10333",
   "dsn": "postgres://quarkbb:quarkbb_password@localhost:5432/quarkbb?sslmode=disable",
-  "keys": "e0c8409a-b9bf-4068-94d2-eb3816ef4821"
+  "keys": "e0c8409a-b9bf-4068-94d2-eb3816ef4821",
+  "auth_token_ttl": 900,
+  "refresh_token_ttl": 604800
 }
