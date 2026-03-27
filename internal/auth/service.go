@@ -52,6 +52,7 @@ type Service interface {
 	Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error)
 	Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error)
 	Refresh(ctx context.Context, c model.RefreshCommand) (*accessToken, *refreshToken, error)
+	Logout(ctx context.Context, c model.LogoutCommand) error
 	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
 	VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error)
 }
@@ -183,6 +184,33 @@ func (svc serviceImpl) Refresh(ctx context.Context, cmd model.RefreshCommand) (*
 		return nil, nil, fmt.Errorf("refresh error: %w", err)
 	}
 	return at, rt, nil
+}
+
+// Logout invalidates refresh token.
+func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) error {
+	_, err := svc.users.GetUserByID(ctx, cmd.UserID)
+	if err != nil {
+		var nfe *repository.NotFoundError
+		if errors.As(err, &nfe) {
+			return errUserNotFound
+		}
+		return errRefreshFailed
+	}
+
+	used, err := svc.tokens.RefreshTokenUsed(ctx, cmd.JTI)
+	if err != nil {
+		return fmt.Errorf("database error: %w", err)
+	}
+	if used {
+		// todo: revoke all sessions
+		return errors.New("used token detected")
+	}
+
+	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.JTI); err != nil {
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	return nil
 }
 
 func (svc serviceImpl) createTokenPair(user *model.User) (*accessToken, *refreshToken, error) {

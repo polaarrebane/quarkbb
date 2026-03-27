@@ -18,3 +18,9 @@ type RefreshCommand struct {
 	UserID int64  `json:"userid"`
 	JTI    string `json:"jti"`
 }
+
+// LogoutCommand represents the data required for logout.
+type LogoutCommand struct {
+	UserID int64  `json:"userid"`
+	JTI    string `json:"jti"`
+}

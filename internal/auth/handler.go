@@ -23,6 +23,7 @@ type handler struct {
 type Handler interface {
 	Register(w http.ResponseWriter, r *http.Request)
 	Login(w http.ResponseWriter, r *http.Request)
+	Logout(w http.ResponseWriter, r *http.Request)
 	Refresh(w http.ResponseWriter, r *http.Request)
 	JwtAuthMiddleware(next http.Handler) http.Handler
 }
@@ -120,6 +121,38 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	newAccessGrantedResponse(at).Send(w)
 }
 
+// Logout handles POST /api/v1/auth/logout requests.
+func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
+	tokenCookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	jti := claims.ID
+	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if err := h.svc.Logout(r.Context(), model.LogoutCommand{
+		UserID: userID,
+		JTI:    jti,
+	}); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	h.unsetRefreshTokenCookie(w)
+}
+
 func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response, error) {
 	if err := h.decodeCommand(r, cmd); err != nil {
 		return newMalformedBodyResponse(), err
@@ -150,6 +183,20 @@ func (h *handler) setRefreshTokenCookie(w http.ResponseWriter, rt *refreshToken)
 		Value:    rt.RawString,
 		Path:     "/api/v1/auth",
 		MaxAge:   rt.MaxAge,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookieRefreshToken)
+}
+
+func (h *handler) unsetRefreshTokenCookie(w http.ResponseWriter) {
+	cookieRefreshToken := http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/api/v1/auth",
+		MaxAge:   0,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,

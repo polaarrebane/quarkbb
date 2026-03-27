@@ -15,6 +15,7 @@ func NewRouter(auth auth.Handler) http.Handler {
 	r.Post("/api/v1/auth/login", auth.Login)
 	r.Post("/api/v1/auth/register", auth.Register)
 	r.Post("/api/v1/auth/refresh", auth.Refresh)
+	r.Post("/api/v1/auth/logout", auth.Logout)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(auth.JwtAuthMiddleware)
