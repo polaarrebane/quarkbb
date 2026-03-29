@@ -9,9 +9,10 @@ import (
 
 type contextKey struct{}
 
-var userContextKey = contextKey{}
+var authClaimsContextKey = contextKey{}
+var refreshClaimsContextKey = contextKey{}
 
-func (h *handler) JwtAuthMiddleware(next http.Handler) http.Handler {
+func (h *handler) JwtAuthTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, err := extractBearerToken(r)
 		if err != nil {
@@ -25,7 +26,26 @@ func (h *handler) JwtAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userContextKey, claims)
+		ctx := context.WithValue(r.Context(), authClaimsContextKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (h *handler) JwtRefreshTokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenCookie, err := r.Cookie(refreshTokenCookieName)
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), refreshClaimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

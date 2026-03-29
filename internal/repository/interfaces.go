@@ -17,6 +17,14 @@ type UserRepository interface {
 
 // RefreshTokenRepository defines the interface for refresh token data access operations.
 type RefreshTokenRepository interface {
-	RefreshTokenUsed(ctx context.Context, jti string) (bool, error)
+	IsRefreshTokenUsed(ctx context.Context, jti string) (bool, error)
 	MarkTokenAsUsed(ctx context.Context, jti string) error
+}
+
+// SessionRepository defines the interface for session data access operations.
+type SessionRepository interface {
+	CreateSession(ctx context.Context, user *model.User) (*model.Session, error)
+	GetAllSessions(ctx context.Context, user *model.User) ([]model.Session, error)
+	IsSessionClosed(ctx context.Context, publicID string) (bool, error)
+	CloseSession(ctx context.Context, publicID string) error
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"codeberg.org/ronia/quarkbb/internal/model"
 	v "codeberg.org/ronia/quarkbb/internal/validator"
 )
 
@@ -108,6 +109,36 @@ func newLoginFailedResponse() *response {
 		data:   nil,
 		err:    errInternalError,
 		status: http.StatusInternalServerError,
+	}
+}
+
+type sessionDescription struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+func newSessionsResponse(sessions []model.Session) *response {
+	data := make([]sessionDescription, len(sessions))
+	for i, s := range sessions {
+		var status string
+		switch s.Status {
+		case model.SessionActive:
+			status = "active"
+		case model.SessionClosed:
+			status = "closed"
+		default:
+			status = "undefined"
+		}
+		data[i] = sessionDescription{
+			ID:     s.PublicID,
+			Status: status,
+		}
+	}
+
+	return &response{
+		data:   data,
+		err:    nil,
+		status: http.StatusOK,
 	}
 }
 

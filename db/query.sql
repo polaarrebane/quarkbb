@@ -28,3 +28,26 @@ INSERT INTO used_refresh_tokens (
 ) VALUES (
     $1
 );
+
+-- name: GetAllSessionsByUserId :many
+SELECT * FROM sessions
+WHERE user_id = $1;
+
+-- name: CountClosedSessionByPublicID :one
+SELECT count(*) FROM sessions
+WHERE public_id = $1 AND status = 'closed';
+
+-- name: CreateSession :one
+INSERT INTO sessions (
+    user_id, public_id, created_at, updated_at, status
+) VALUES (
+    $1, $2, $3, $4, 'active'
+)
+RETURNING id;
+
+-- name: CloseSession :exec
+UPDATE sessions
+SET
+    status = 'closed',
+    updated_at = now()
+WHERE public_id = $1;

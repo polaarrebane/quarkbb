@@ -15,12 +15,19 @@ type LoginCommand struct {
 
 // RefreshCommand represents the data required for refresh an auth token.
 type RefreshCommand struct {
-	UserID int64  `json:"userid"`
-	JTI    string `json:"jti"`
+	UserID    int64  `json:"userid"`
+	SessionID string `json:"sessionid"`
+	JTI       string `json:"jti"`
 }
 
 // LogoutCommand represents the data required for logout.
 type LogoutCommand struct {
-	UserID int64  `json:"userid"`
-	JTI    string `json:"jti"`
+	UserID    int64  `json:"userid"`
+	SessionID string `json:"sessionid"`
+	JTI       string `json:"jti"`
+}
+
+// RetrieveSessionsCommand represents the data required for retrieving all sessions.
+type RetrieveSessionsCommand struct {
+	Username string `json:"userid"`
 }

@@ -7,9 +7,35 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const closeSession = `-- name: CloseSession :exec
+UPDATE sessions
+SET
+    status = 'closed',
+    updated_at = now()
+WHERE public_id = $1
+`
+
+func (q *Queries) CloseSession(ctx context.Context, publicID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, closeSession, publicID)
+	return err
+}
+
+const countClosedSessionByPublicID = `-- name: CountClosedSessionByPublicID :one
+SELECT count(*) FROM sessions
+WHERE public_id = $1 AND status = 'closed'
+`
+
+func (q *Queries) CountClosedSessionByPublicID(ctx context.Context, publicID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countClosedSessionByPublicID, publicID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const countUsedRefreshTokenByJTI = `-- name: CountUsedRefreshTokenByJTI :one
 SELECT count(*) FROM used_refresh_tokens
@@ -33,6 +59,34 @@ func (q *Queries) CountUserByUsername(ctx context.Context, username string) (int
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createSession = `-- name: CreateSession :one
+INSERT INTO sessions (
+    user_id, public_id, created_at, updated_at, status
+) VALUES (
+    $1, $2, $3, $4, 'active'
+)
+RETURNING id
+`
+
+type CreateSessionParams struct {
+	UserID    int64
+	PublicID  uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createSession,
+		arg.UserID,
+		arg.PublicID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const createUserAndReturnId = `-- name: CreateUserAndReturnId :one
@@ -72,6 +126,38 @@ func (q *Queries) FindUserByUsername(ctx context.Context, username string) (User
 		&i.Password,
 	)
 	return i, err
+}
+
+const getAllSessionsByUserId = `-- name: GetAllSessionsByUserId :many
+SELECT id, user_id, status, public_id, created_at, updated_at FROM sessions
+WHERE user_id = $1
+`
+
+func (q *Queries) GetAllSessionsByUserId(ctx context.Context, userID int64) ([]Session, error) {
+	rows, err := q.db.Query(ctx, getAllSessionsByUserId, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Status,
+			&i.PublicID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserById = `-- name: GetUserById :one

@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +12,11 @@ import (
 	"strconv"
 
 	"codeberg.org/ronia/quarkbb/internal/model"
+	"codeberg.org/ronia/quarkbb/internal/security"
 	"codeberg.org/ronia/quarkbb/internal/validator"
 )
+
+const refreshTokenCookieName = "refresh_token"
 
 type handler struct {
 	svc       Service
@@ -24,8 +28,10 @@ type Handler interface {
 	Register(w http.ResponseWriter, r *http.Request)
 	Login(w http.ResponseWriter, r *http.Request)
 	Logout(w http.ResponseWriter, r *http.Request)
+	Sessions(w http.ResponseWriter, r *http.Request)
 	Refresh(w http.ResponseWriter, r *http.Request)
-	JwtAuthMiddleware(next http.Handler) http.Handler
+	JwtAuthTokenMiddleware(next http.Handler) http.Handler
+	JwtRefreshTokenMiddleware(next http.Handler) http.Handler
 }
 
 // NewHandler creates a new authentication HTTP handler.
@@ -89,18 +95,13 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Refresh handles POST /api/v1/auth/refresh requests.
 func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	tokenCookie, err := r.Cookie("refresh_token")
+	ctx := r.Context()
+	claims, err := extractRefreshClaims(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-
-	claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
-	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-
+	sessionID := claims.SessionID
 	jti := claims.ID
 	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
 	if err != nil {
@@ -108,9 +109,10 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	at, rt, err := h.svc.Refresh(r.Context(), model.RefreshCommand{
-		UserID: userID,
-		JTI:    jti,
+	at, rt, err := h.svc.Refresh(ctx, model.RefreshCommand{
+		UserID:    userID,
+		JTI:       jti,
+		SessionID: sessionID,
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
@@ -123,18 +125,13 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /api/v1/auth/logout requests.
 func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
-	tokenCookie, err := r.Cookie("refresh_token")
+	ctx := r.Context()
+	claims, err := extractRefreshClaims(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-
-	claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
-	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-
+	sessionID := claims.SessionID
 	jti := claims.ID
 	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
 	if err != nil {
@@ -143,14 +140,36 @@ func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.Logout(r.Context(), model.LogoutCommand{
-		UserID: userID,
-		JTI:    jti,
+		UserID:    userID,
+		JTI:       jti,
+		SessionID: sessionID,
 	}); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
 	h.unsetRefreshTokenCookie(w)
+}
+
+// Sessions handles GET /api/v1/auth/sessions requests.
+func (h *handler) Sessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	claims, err := extractAuthClaims(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	cmd := model.RetrieveSessionsCommand{
+		Username: claims.Username,
+	}
+
+	sessions, err := h.svc.Sessions(ctx, cmd)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	newSessionsResponse(sessions).Send(w)
 }
 
 func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response, error) {
@@ -179,7 +198,7 @@ func (h *handler) decodeCommand(r *http.Request, cmd any) error {
 
 func (h *handler) setRefreshTokenCookie(w http.ResponseWriter, rt *refreshToken) {
 	cookieRefreshToken := http.Cookie{
-		Name:     "refresh_token",
+		Name:     refreshTokenCookieName,
 		Value:    rt.RawString,
 		Path:     "/api/v1/auth",
 		MaxAge:   rt.MaxAge,
@@ -193,7 +212,7 @@ func (h *handler) setRefreshTokenCookie(w http.ResponseWriter, rt *refreshToken)
 
 func (h *handler) unsetRefreshTokenCookie(w http.ResponseWriter) {
 	cookieRefreshToken := http.Cookie{
-		Name:     "refresh_token",
+		Name:     refreshTokenCookieName,
 		Value:    "",
 		Path:     "/api/v1/auth",
 		MaxAge:   0,
@@ -203,4 +222,32 @@ func (h *handler) unsetRefreshTokenCookie(w http.ResponseWriter) {
 	}
 
 	http.SetCookie(w, &cookieRefreshToken)
+}
+
+func extractAuthClaims(ctx context.Context) (*security.AuthClaims, error) {
+	authFromContext := ctx.Value(authClaimsContextKey)
+	if authFromContext == nil {
+		return nil, errAuthorizationRequired
+	}
+
+	authClaims, ok := authFromContext.(*security.AuthClaims)
+	if !ok {
+		return nil, errAuthorizationRequired
+	}
+
+	return authClaims, nil
+}
+
+func extractRefreshClaims(ctx context.Context) (*security.RefreshClaims, error) {
+	refreshFromContext := ctx.Value(refreshClaimsContextKey)
+	if refreshFromContext == nil {
+		return nil, errAuthorizationRequired
+	}
+
+	refreshClaims, ok := refreshFromContext.(*security.RefreshClaims)
+	if !ok {
+		return nil, errAuthorizationRequired
+	}
+
+	return refreshClaims, nil
 }

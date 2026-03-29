@@ -14,11 +14,12 @@ func NewRouter(auth auth.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Post("/api/v1/auth/login", auth.Login)
 	r.Post("/api/v1/auth/register", auth.Register)
-	r.Post("/api/v1/auth/refresh", auth.Refresh)
-	r.Post("/api/v1/auth/logout", auth.Logout)
+	r.With(auth.JwtRefreshTokenMiddleware).Post("/api/v1/auth/refresh", auth.Refresh)
+	r.With(auth.JwtRefreshTokenMiddleware).Post("/api/v1/auth/logout", auth.Logout)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(auth.JwtAuthMiddleware)
+		r.Use(auth.JwtAuthTokenMiddleware)
+		r.Get("/sessions", auth.Sessions)
 		r.Get("/protected", func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			if err := json.NewEncoder(w).Encode("it works"); err != nil {
@@ -26,5 +27,6 @@ func NewRouter(auth auth.Handler) http.Handler {
 			}
 		})
 	})
+
 	return r
 }

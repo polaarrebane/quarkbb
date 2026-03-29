@@ -16,7 +16,7 @@ import (
 
 // JWTService provides JWT token generation and verification functionality.
 type JWTService interface {
-	GenerateTokenPair(username string, userid string) (*TokenPair, error)
+	GenerateTokenPair(username string, userid string, sessionid string) (*TokenPair, error)
 	VerifyAuthToken(tokenString string) (*AuthClaims, error)
 	VerifyRefreshToken(tokenString string) (*RefreshClaims, error)
 }
@@ -74,15 +74,16 @@ type AuthClaims struct {
 
 // RefreshClaims represents the claims stored in JWT refresh tokens.
 type RefreshClaims struct {
+	SessionID string
 	jwt.RegisteredClaims
 }
 
-func (js *jwtServiceImpl) GenerateTokenPair(username string, userid string) (*TokenPair, error) {
+func (js *jwtServiceImpl) GenerateTokenPair(username string, userid string, sessionid string) (*TokenPair, error) {
 	now := time.Now()
 
 	return &TokenPair{
 		AccessToken:      js.newAuthToken(username, userid, now),
-		RefreshToken:     js.newRefreshToken(userid, now),
+		RefreshToken:     js.newRefreshToken(userid, sessionid, now),
 		AccessExpiresIn:  js.authTokenTTL,
 		RefreshExpiresIn: js.refreshTokenTTL,
 	}, nil
@@ -107,8 +108,9 @@ func (js *jwtServiceImpl) newAuthToken(username string, userid string, t time.Ti
 	return r
 }
 
-func (js *jwtServiceImpl) newRefreshToken(userid string, t time.Time) string {
+func (js *jwtServiceImpl) newRefreshToken(userid string, sessionid string, t time.Time) string {
 	claims := &RefreshClaims{
+		SessionID: sessionid,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),

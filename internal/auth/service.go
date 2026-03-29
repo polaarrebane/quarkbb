@@ -40,9 +40,10 @@ type refreshToken struct {
 }
 
 type serviceImpl struct {
-	users  repository.UserRepository
-	tokens repository.RefreshTokenRepository
-	jwt    security.JWTService
+	users    repository.UserRepository
+	tokens   repository.RefreshTokenRepository
+	sessions repository.SessionRepository
+	jwt      security.JWTService
 }
 
 // Service provides authentication and user management business logic.
@@ -53,6 +54,7 @@ type Service interface {
 	Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error)
 	Refresh(ctx context.Context, c model.RefreshCommand) (*accessToken, *refreshToken, error)
 	Logout(ctx context.Context, c model.LogoutCommand) error
+	Sessions(ctx context.Context, cmd model.RetrieveSessionsCommand) ([]model.Session, error)
 	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
 	VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error)
 }
@@ -61,12 +63,14 @@ type Service interface {
 func NewService(
 	ru repository.UserRepository,
 	rt repository.RefreshTokenRepository,
+	sr repository.SessionRepository,
 	js security.JWTService,
 ) Service {
 	return &serviceImpl{
-		users:  ru,
-		tokens: rt,
-		jwt:    js,
+		users:    ru,
+		tokens:   rt,
+		sessions: sr,
+		jwt:      js,
 	}
 }
 
@@ -148,7 +152,12 @@ func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*access
 		return nil, nil, errWrongPassword
 	}
 
-	at, rt, err := svc.createTokenPair(user)
+	session, err := svc.sessions.CreateSession(ctx, user)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create session: %w", err)
+	}
+
+	at, rt, err := svc.createTokenPair(user, session.PublicID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create token pair: %w", err)
 	}
@@ -166,24 +175,39 @@ func (svc serviceImpl) Refresh(ctx context.Context, cmd model.RefreshCommand) (*
 		return nil, nil, errRefreshFailed
 	}
 
-	used, err := svc.tokens.RefreshTokenUsed(ctx, cmd.JTI)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database error: %w", err)
-	}
-	if used {
+	if err := svc.checkIfRefreshTokenIsUsed(ctx, cmd.JTI); err != nil {
 		// todo: revoke all sessions
-		return nil, nil, errors.New("used token detected")
+		return nil, nil, fmt.Errorf("token is used: %w", err)
+	}
+
+	if err := svc.checkIfSessionIsClosed(ctx, cmd.SessionID); err != nil {
+		// todo: revoke all sessions
+		return nil, nil, fmt.Errorf("session is closed: %w", err)
 	}
 
 	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.JTI); err != nil {
 		return nil, nil, fmt.Errorf("database error: %w", err)
 	}
 
-	at, rt, err := svc.createTokenPair(user)
+	at, rt, err := svc.createTokenPair(user, cmd.SessionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("refresh error: %w", err)
 	}
 	return at, rt, nil
+}
+
+// Sessions gets all sessions for current user.
+func (svc serviceImpl) Sessions(ctx context.Context, cmd model.RetrieveSessionsCommand) ([]model.Session, error) {
+	user, err := svc.users.FindUserByUsername(ctx, cmd.Username)
+	if err != nil {
+		return nil, errAuthorizationRequired
+	}
+
+	sessions, err := svc.sessions.GetAllSessions(ctx, user)
+	if err != nil {
+		return nil, errAuthorizationRequired
+	}
+	return sessions, nil
 }
 
 // Logout invalidates refresh token.
@@ -197,15 +221,15 @@ func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) erro
 		return errRefreshFailed
 	}
 
-	used, err := svc.tokens.RefreshTokenUsed(ctx, cmd.JTI)
-	if err != nil {
-		return fmt.Errorf("database error: %w", err)
-	}
-	if used {
+	if err := svc.checkIfRefreshTokenIsUsed(ctx, cmd.JTI); err != nil {
 		// todo: revoke all sessions
-		return errors.New("used token detected")
+		return fmt.Errorf("token is used: %w", err)
 	}
 
+	// todo: add transaction
+	if err := svc.sessions.CloseSession(ctx, cmd.SessionID); err != nil {
+		return fmt.Errorf("database error: %w", err)
+	}
 	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.JTI); err != nil {
 		return fmt.Errorf("database error: %w", err)
 	}
@@ -213,8 +237,8 @@ func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) erro
 	return nil
 }
 
-func (svc serviceImpl) createTokenPair(user *model.User) (*accessToken, *refreshToken, error) {
-	tokens, err := svc.jwt.GenerateTokenPair(user.Username, fmt.Sprintf("%d", user.ID))
+func (svc serviceImpl) createTokenPair(user *model.User, sessionID string) (*accessToken, *refreshToken, error) {
+	tokens, err := svc.jwt.GenerateTokenPair(user.Username, fmt.Sprintf("%d", user.ID), sessionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create token pair error: %w", err)
 	}
@@ -231,4 +255,26 @@ func (svc serviceImpl) createTokenPair(user *model.User) (*accessToken, *refresh
 		MaxAge:    tokens.RefreshExpiresIn,
 	}
 	return at, rt, nil
+}
+
+func (svc serviceImpl) checkIfRefreshTokenIsUsed(ctx context.Context, jti string) error {
+	used, err := svc.tokens.IsRefreshTokenUsed(ctx, jti)
+	if err != nil {
+		return fmt.Errorf("database error: %w", err)
+	}
+	if used {
+		return errors.New("used token detected")
+	}
+	return nil
+}
+
+func (svc serviceImpl) checkIfSessionIsClosed(ctx context.Context, sessionID string) error {
+	closed, err := svc.sessions.IsSessionClosed(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("database error: %w", err)
+	}
+	if closed {
+		return errors.New("closed session detected")
+	}
+	return nil
 }

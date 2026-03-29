@@ -19,7 +19,7 @@ func NewRefreshTokenRepository(q *postgres.Queries) RefreshTokenRepository {
 	}
 }
 
-func (r *sqlRefreshTokenRepository) RefreshTokenUsed(ctx context.Context, jti string) (bool, error) {
+func (r *sqlRefreshTokenRepository) IsRefreshTokenUsed(ctx context.Context, jti string) (bool, error) {
 	id, err := uuid.Parse(jti)
 	if err != nil {
 		return false, fmt.Errorf("parse jti: %w", err)

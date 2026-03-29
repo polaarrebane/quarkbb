@@ -54,12 +54,13 @@ func main() {
 	sqlcQueries := postgres.New(pool)
 	authRepo := repository.NewUserRepository(sqlcQueries)
 	rtRepo := repository.NewRefreshTokenRepository(sqlcQueries)
+	sessionsRepo := repository.NewSessionRepository(sqlcQueries)
 
 	js, err := security.NewJWTService(*appConfig)
 	if err != nil {
 		log.Fatalf("jwt service: %v", err)
 	}
-	authSvc := auth.NewService(authRepo, rtRepo, js)
+	authSvc := auth.NewService(authRepo, rtRepo, sessionsRepo, js)
 	val := validator.New()
 
 	authHandler := auth.NewHandler(authSvc, val)

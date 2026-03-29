@@ -5,8 +5,63 @@
 package postgres
 
 import (
+	"database/sql/driver"
+	"fmt"
+	"time"
+
 	"github.com/google/uuid"
 )
+
+type SessionStatus string
+
+const (
+	SessionStatusActive SessionStatus = "active"
+	SessionStatusClosed SessionStatus = "closed"
+)
+
+func (e *SessionStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SessionStatus(s)
+	case string:
+		*e = SessionStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SessionStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSessionStatus struct {
+	SessionStatus SessionStatus
+	Valid         bool // Valid is true if SessionStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSessionStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SessionStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SessionStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSessionStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SessionStatus), nil
+}
+
+type Session struct {
+	ID        int64
+	UserID    int64
+	Status    SessionStatus
+	PublicID  uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
 
 type UsedRefreshToken struct {
 	ID  int64
