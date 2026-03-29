@@ -31,3 +31,9 @@ type LogoutCommand struct {
 type RetrieveSessionsCommand struct {
 	Username string `json:"userid"`
 }
+
+// CloseSessionCommand represents the data required for closing a session.
+type CloseSessionCommand struct {
+	CurrentSession string `json:"current_session"`
+	SessionID      string `json:"sessionid"`
+}

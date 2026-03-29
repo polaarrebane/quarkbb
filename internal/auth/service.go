@@ -55,6 +55,7 @@ type Service interface {
 	Refresh(ctx context.Context, c model.RefreshCommand) (*accessToken, *refreshToken, error)
 	Logout(ctx context.Context, c model.LogoutCommand) error
 	Sessions(ctx context.Context, cmd model.RetrieveSessionsCommand) ([]model.Session, error)
+	CloseSession(ctx context.Context, cmd model.CloseSessionCommand) error
 	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
 	VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error)
 }
@@ -234,6 +235,25 @@ func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) erro
 		return fmt.Errorf("database error: %w", err)
 	}
 
+	return nil
+}
+
+// CloseSession closes one specific session.
+func (svc serviceImpl) CloseSession(ctx context.Context, cmd model.CloseSessionCommand) error {
+	if cmd.CurrentSession == cmd.SessionID {
+		return errCantCloseCurrentSession
+	}
+	if err := svc.sessions.CloseSession(ctx, cmd.SessionID); err != nil {
+		var nfe *repository.NotFoundError
+		if errors.As(err, &nfe) {
+			return errSessionNotFound
+		}
+		var mke *repository.MalformedKeyError
+		if errors.As(err, &mke) {
+			return errMalformedID
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
 	return nil
 }
 

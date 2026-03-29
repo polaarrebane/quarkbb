@@ -30,8 +30,11 @@ type Handler interface {
 	Logout(w http.ResponseWriter, r *http.Request)
 	Sessions(w http.ResponseWriter, r *http.Request)
 	Refresh(w http.ResponseWriter, r *http.Request)
+	CloseSession(w http.ResponseWriter, r *http.Request)
+
 	JwtAuthTokenMiddleware(next http.Handler) http.Handler
 	JwtRefreshTokenMiddleware(next http.Handler) http.Handler
+	SessionIDCtx(next http.Handler) http.Handler
 }
 
 // NewHandler creates a new authentication HTTP handler.
@@ -169,7 +172,47 @@ func (h *handler) Sessions(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	newSessionsResponse(sessions).Send(w)
+
+	currentSession := claims.SessionID
+	newSessionsResponse(currentSession, sessions).Send(w)
+}
+
+// CloseSession handles DELETE /api/v1/auth/sessions/{sessionID} requests.
+func (h *handler) CloseSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	authClaims, err := extractAuthClaims(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	sessionID, err := extractSessionID(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	cmd := model.CloseSessionCommand{
+		CurrentSession: authClaims.SessionID,
+		SessionID:      sessionID,
+	}
+
+	if err := h.svc.CloseSession(ctx, cmd); err != nil {
+		switch {
+		case errors.Is(err, errSessionNotFound):
+			w.WriteHeader(http.StatusNotFound)
+			return
+		case errors.Is(err, errMalformedID):
+			writeError(w, http.StatusBadRequest, err.Error(), nil)
+			return
+		case errors.Is(err, errCantCloseCurrentSession):
+			writeError(w, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handler) decodeAndValidateCommand(r *http.Request, cmd any) (*response, error) {
@@ -250,4 +293,16 @@ func extractRefreshClaims(ctx context.Context) (*security.RefreshClaims, error) 
 	}
 
 	return refreshClaims, nil
+}
+
+func extractSessionID(ctx context.Context) (string, error) {
+	sessionIDFromContext := ctx.Value(sessionIDContextKey)
+	if sessionIDFromContext == nil {
+		return "", errSessionNotFound
+	}
+	sessionID, ok := sessionIDFromContext.(string)
+	if !ok {
+		return "", errSessionNotFound
+	}
+	return sessionID, nil
 }

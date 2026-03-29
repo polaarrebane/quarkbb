@@ -113,11 +113,12 @@ func newLoginFailedResponse() *response {
 }
 
 type sessionDescription struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	Current bool   `json:"current"`
 }
 
-func newSessionsResponse(sessions []model.Session) *response {
+func newSessionsResponse(currentSession string, sessions []model.Session) *response {
 	data := make([]sessionDescription, len(sessions))
 	for i, s := range sessions {
 		var status string
@@ -130,8 +131,9 @@ func newSessionsResponse(sessions []model.Session) *response {
 			status = "undefined"
 		}
 		data[i] = sessionDescription{
-			ID:     s.PublicID,
-			Status: status,
+			ID:      s.PublicID,
+			Status:  status,
+			Current: currentSession == s.PublicID,
 		}
 	}
 

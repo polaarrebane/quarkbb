@@ -5,12 +5,17 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
-type contextKey struct{}
+type contextKey string
 
-var authClaimsContextKey = contextKey{}
-var refreshClaimsContextKey = contextKey{}
+const (
+	authClaimsContextKey    contextKey = "authClaimsContextKey"
+	refreshClaimsContextKey contextKey = "refreshClaimsContextKey"
+	sessionIDContextKey     contextKey = "sessionIDContextKey"
+)
 
 func (h *handler) JwtAuthTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +51,14 @@ func (h *handler) JwtRefreshTokenMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), refreshClaimsContextKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (h *handler) SessionIDCtx(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessionID := chi.URLParam(r, "sessionID")
+		ctx := context.WithValue(r.Context(), sessionIDContextKey, sessionID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

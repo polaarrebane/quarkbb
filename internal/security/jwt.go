@@ -68,7 +68,8 @@ type TokenPair struct {
 
 // AuthClaims represents the claims stored in JWT access tokens.
 type AuthClaims struct {
-	Username string
+	Username  string
+	SessionID string
 	jwt.RegisteredClaims
 }
 
@@ -82,16 +83,17 @@ func (js *jwtServiceImpl) GenerateTokenPair(username string, userid string, sess
 	now := time.Now()
 
 	return &TokenPair{
-		AccessToken:      js.newAuthToken(username, userid, now),
+		AccessToken:      js.newAuthToken(username, userid, sessionid, now),
 		RefreshToken:     js.newRefreshToken(userid, sessionid, now),
 		AccessExpiresIn:  js.authTokenTTL,
 		RefreshExpiresIn: js.refreshTokenTTL,
 	}, nil
 }
 
-func (js *jwtServiceImpl) newAuthToken(username string, userid string, t time.Time) string {
+func (js *jwtServiceImpl) newAuthToken(username string, userid string, sessionid string, t time.Time) string {
 	claims := &AuthClaims{
-		Username: username,
+		Username:  username,
+		SessionID: sessionid,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(t),

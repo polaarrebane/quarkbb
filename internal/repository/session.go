@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -80,9 +82,13 @@ func (r *sessionRepository) IsSessionClosed(ctx context.Context, publicID string
 func (r *sessionRepository) CloseSession(ctx context.Context, publicID string) error {
 	id, err := uuid.Parse(publicID)
 	if err != nil {
-		return fmt.Errorf("parse public id of session: %w", err)
+		return &MalformedKeyError{Key: publicID}
 	}
-	if err := r.q.CloseSession(ctx, id); err != nil {
+	_, err = r.q.CloseSession(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &NotFoundError{Entity: "session by publicID", Key: publicID}
+		}
 		return fmt.Errorf("database error: %w", err)
 	}
 	return nil

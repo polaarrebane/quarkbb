@@ -11,3 +11,12 @@ type NotFoundError struct {
 func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("%s not found: %s", e.Entity, e.Key)
 }
+
+// MalformedKeyError is returned when a requested key is malformed (i.e. not an uuid).
+type MalformedKeyError struct {
+	Key string
+}
+
+func (e *MalformedKeyError) Error() string {
+	return fmt.Sprintf("malformed key: %s", e.Key)
+}

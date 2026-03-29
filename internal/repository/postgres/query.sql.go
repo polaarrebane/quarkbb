@@ -12,17 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
-const closeSession = `-- name: CloseSession :exec
+const closeSession = `-- name: CloseSession :one
 UPDATE sessions
 SET
     status = 'closed',
     updated_at = now()
 WHERE public_id = $1
+RETURNING public_id
 `
 
-func (q *Queries) CloseSession(ctx context.Context, publicID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, closeSession, publicID)
-	return err
+func (q *Queries) CloseSession(ctx context.Context, publicID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, closeSession, publicID)
+	var public_id uuid.UUID
+	err := row.Scan(&public_id)
+	return public_id, err
 }
 
 const countClosedSessionByPublicID = `-- name: CountClosedSessionByPublicID :one

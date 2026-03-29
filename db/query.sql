@@ -45,9 +45,10 @@ INSERT INTO sessions (
 )
 RETURNING id;
 
--- name: CloseSession :exec
+-- name: CloseSession :one
 UPDATE sessions
 SET
     status = 'closed',
     updated_at = now()
-WHERE public_id = $1;
+WHERE public_id = $1
+RETURNING public_id;
