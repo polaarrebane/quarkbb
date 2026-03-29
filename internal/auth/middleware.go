@@ -38,14 +38,29 @@ func (h *handler) JwtAuthTokenMiddleware(next http.Handler) http.Handler {
 
 func (h *handler) JwtRefreshTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenCookie, err := r.Cookie(refreshTokenCookieName)
+		refreshTokenCookie, err := r.Cookie(refreshTokenCookieName)
 		if err != nil {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 
-		claims, err := h.svc.VerifyRefreshToken(tokenCookie.Value)
+		claims, err := h.svc.VerifyRefreshToken(refreshTokenCookie.Value)
 		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		csrfTokenHeader := r.Header.Get("X-CSRF-Token")
+		csrfTokenCookie, err := r.Cookie(csrfTokenCookieName)
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if csrfTokenHeader != csrfTokenCookie.Value {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if !h.svc.VerifyCsrfToken(csrfTokenHeader, claims.ID) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}

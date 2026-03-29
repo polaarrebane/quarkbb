@@ -2,7 +2,10 @@ package security
 
 import (
 	"crypto/ecdsa"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -19,9 +22,12 @@ type JWTService interface {
 	GenerateTokenPair(username string, userid string, sessionid string) (*TokenPair, error)
 	VerifyAuthToken(tokenString string) (*AuthClaims, error)
 	VerifyRefreshToken(tokenString string) (*RefreshClaims, error)
+	VerifyCsrfToken(csrfToken string, jti string) bool
+	GenerateCsrfToken(jti string) string
 }
 
 type jwtServiceImpl struct {
+	appKey          string
 	privateKey      *ecdsa.PrivateKey
 	publicKey       *ecdsa.PublicKey
 	keyID           string
@@ -55,6 +61,7 @@ func NewJWTService(c config.Config) (JWTService, error) {
 		issuer:          "https://quarkbb.org",
 		authTokenTTL:    c.AuthTokenTTL(),
 		refreshTokenTTL: c.RefreshTokenTTL(),
+		appKey:          c.AppKey(),
 	}, nil
 }
 
@@ -64,6 +71,7 @@ type TokenPair struct {
 	RefreshToken     string
 	AccessExpiresIn  int
 	RefreshExpiresIn int
+	RefreshTokenJti  string
 }
 
 // AuthClaims represents the claims stored in JWT access tokens.
@@ -81,12 +89,14 @@ type RefreshClaims struct {
 
 func (js *jwtServiceImpl) GenerateTokenPair(username string, userid string, sessionid string) (*TokenPair, error) {
 	now := time.Now()
+	rtJti, rtRawString := js.newRefreshToken(userid, sessionid, now)
 
 	return &TokenPair{
 		AccessToken:      js.newAuthToken(username, userid, sessionid, now),
-		RefreshToken:     js.newRefreshToken(userid, sessionid, now),
+		RefreshToken:     rtRawString,
 		AccessExpiresIn:  js.authTokenTTL,
 		RefreshExpiresIn: js.refreshTokenTTL,
+		RefreshTokenJti:  rtJti,
 	}, nil
 }
 
@@ -110,11 +120,12 @@ func (js *jwtServiceImpl) newAuthToken(username string, userid string, sessionid
 	return r
 }
 
-func (js *jwtServiceImpl) newRefreshToken(userid string, sessionid string, t time.Time) string {
+func (js *jwtServiceImpl) newRefreshToken(userid string, sessionid string, t time.Time) (string, string) {
+	jti := uuid.NewString()
 	claims := &RefreshClaims{
 		SessionID: sessionid,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.NewString(),
+			ID:        jti,
 			IssuedAt:  jwt.NewNumericDate(t),
 			ExpiresAt: jwt.NewNumericDate(t.Add(time.Duration(js.refreshTokenTTL * int(time.Second)))),
 			Issuer:    js.issuer,
@@ -126,7 +137,7 @@ func (js *jwtServiceImpl) newRefreshToken(userid string, sessionid string, t tim
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 	token.Header["kid"] = js.keyID
 	r, _ := token.SignedString(js.privateKey)
-	return r
+	return jti, r
 }
 
 func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
@@ -193,6 +204,17 @@ func (js *jwtServiceImpl) VerifyRefreshToken(tokenString string) (*RefreshClaims
 		return nil, errors.New("invalid token")
 	}
 	return claims, nil
+}
+
+func (js *jwtServiceImpl) VerifyCsrfToken(csrfToken string, jti string) bool {
+	s := js.GenerateCsrfToken(jti)
+	return s == csrfToken
+}
+
+func (js *jwtServiceImpl) GenerateCsrfToken(jti string) string {
+	h := hmac.New(sha256.New, []byte(js.appKey))
+	h.Write([]byte(jti))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (js *jwtServiceImpl) parseTokenString(tokenString string, claims jwt.Claims) (*jwt.Token, error) {

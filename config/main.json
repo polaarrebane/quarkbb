@@ -1,4 +1,5 @@
 {
+  "app_key": "secret_app_key",
   "host": "0.0.0.0",
   "port": "10333",
   "dsn": "postgres://quarkbb:quarkbb_password@localhost:5432/quarkbb?sslmode=disable",

@@ -16,25 +16,9 @@ import (
 	"codeberg.org/ronia/quarkbb/internal/validator"
 )
 
-const refreshTokenCookieName = "refresh_token"
-
 type handler struct {
 	svc       Service
 	validator validator.Validator
-}
-
-// Handler processes HTTP requests for authentication endpoints.
-type Handler interface {
-	Register(w http.ResponseWriter, r *http.Request)
-	Login(w http.ResponseWriter, r *http.Request)
-	Logout(w http.ResponseWriter, r *http.Request)
-	Sessions(w http.ResponseWriter, r *http.Request)
-	Refresh(w http.ResponseWriter, r *http.Request)
-	CloseSession(w http.ResponseWriter, r *http.Request)
-
-	JwtAuthTokenMiddleware(next http.Handler) http.Handler
-	JwtRefreshTokenMiddleware(next http.Handler) http.Handler
-	SessionIDCtx(next http.Handler) http.Handler
 }
 
 // NewHandler creates a new authentication HTTP handler.
@@ -93,6 +77,7 @@ func (h *handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setRefreshTokenCookie(w, refreshToken)
+	h.setCsrfTokenCookie(w, refreshToken)
 	newAccessGrantedResponse(accessToken).Send(w)
 }
 
@@ -123,6 +108,7 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setRefreshTokenCookie(w, rt)
+	h.setCsrfTokenCookie(w, rt)
 	newAccessGrantedResponse(at).Send(w)
 }
 
@@ -152,6 +138,7 @@ func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.unsetRefreshTokenCookie(w)
+	h.unsetCsrfTokenCookie(w)
 }
 
 // Sessions handles GET /api/v1/auth/sessions requests.
@@ -253,6 +240,21 @@ func (h *handler) setRefreshTokenCookie(w http.ResponseWriter, rt *refreshToken)
 	http.SetCookie(w, &cookieRefreshToken)
 }
 
+func (h *handler) setCsrfTokenCookie(w http.ResponseWriter, rt *refreshToken) {
+	csrfToken := h.svc.GenerateCsrfToken(rt.ID)
+	cookieRefreshToken := http.Cookie{
+		Name:     csrfTokenCookieName,
+		Value:    csrfToken,
+		Path:     "/api/v1/auth",
+		MaxAge:   rt.MaxAge,
+		HttpOnly: false,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookieRefreshToken)
+}
+
 func (h *handler) unsetRefreshTokenCookie(w http.ResponseWriter) {
 	cookieRefreshToken := http.Cookie{
 		Name:     refreshTokenCookieName,
@@ -260,6 +262,20 @@ func (h *handler) unsetRefreshTokenCookie(w http.ResponseWriter) {
 		Path:     "/api/v1/auth",
 		MaxAge:   0,
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookieRefreshToken)
+}
+
+func (h *handler) unsetCsrfTokenCookie(w http.ResponseWriter) {
+	cookieRefreshToken := http.Cookie{
+		Name:     csrfTokenCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth",
+		MaxAge:   0,
+		HttpOnly: false,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	}

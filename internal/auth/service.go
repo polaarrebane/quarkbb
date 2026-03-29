@@ -33,10 +33,10 @@ type accessToken struct {
 }
 
 // refreshToken represents the JWT refresh token response.
-// It contains only the raw token string for client-side storage.
 type refreshToken struct {
 	RawString string `json:"refresh_token"`
 	MaxAge    int    `json:"expires_in"`
+	ID        string `json:"id"`
 }
 
 type serviceImpl struct {
@@ -44,20 +44,6 @@ type serviceImpl struct {
 	tokens   repository.RefreshTokenRepository
 	sessions repository.SessionRepository
 	jwt      security.JWTService
-}
-
-// Service provides authentication and user management business logic.
-// It acts as the intermediate layer between HTTP handlers and the repository layer,
-// implementing validation, security checks, and business rules.
-type Service interface {
-	Register(ctx context.Context, c model.RegisterUserCommand) (*registeredUser, error)
-	Login(ctx context.Context, c model.LoginCommand) (*accessToken, *refreshToken, error)
-	Refresh(ctx context.Context, c model.RefreshCommand) (*accessToken, *refreshToken, error)
-	Logout(ctx context.Context, c model.LogoutCommand) error
-	Sessions(ctx context.Context, cmd model.RetrieveSessionsCommand) ([]model.Session, error)
-	CloseSession(ctx context.Context, cmd model.CloseSessionCommand) error
-	VerifyAuthToken(tokenString string) (*security.AuthClaims, error)
-	VerifyRefreshToken(tokenString string) (*security.RefreshClaims, error)
 }
 
 // NewService creates a new instance of the authentication service.
@@ -93,6 +79,11 @@ func (svc serviceImpl) VerifyRefreshToken(tokenString string) (*security.Refresh
 		return nil, fmt.Errorf("verify refresh token: %w", err)
 	}
 	return claims, nil
+}
+
+// VerifyCsrfToken validates a csrf token string.
+func (svc serviceImpl) VerifyCsrfToken(csrfToken string, jti string) bool {
+	return svc.jwt.VerifyCsrfToken(csrfToken, jti)
 }
 
 // Register creates a new user account in the system.
@@ -163,6 +154,10 @@ func (svc serviceImpl) Login(ctx context.Context, c model.LoginCommand) (*access
 		return nil, nil, fmt.Errorf("create token pair: %w", err)
 	}
 	return at, rt, nil
+}
+
+func (svc serviceImpl) GenerateCsrfToken(jti string) string {
+	return svc.jwt.GenerateCsrfToken(jti)
 }
 
 // Refresh an auth token.
@@ -271,6 +266,7 @@ func (svc serviceImpl) createTokenPair(user *model.User, sessionID string) (*acc
 		},
 	}
 	rt := &refreshToken{
+		ID:        tokens.RefreshTokenJti,
 		RawString: tokens.RefreshToken,
 		MaxAge:    tokens.RefreshExpiresIn,
 	}

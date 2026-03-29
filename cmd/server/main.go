@@ -56,7 +56,7 @@ func main() {
 	rtRepo := repository.NewRefreshTokenRepository(sqlcQueries)
 	sessionsRepo := repository.NewSessionRepository(sqlcQueries)
 
-	js, err := security.NewJWTService(*appConfig)
+	js, err := security.NewJWTService(appConfig)
 	if err != nil {
 		log.Fatalf("jwt service: %v", err)
 	}
