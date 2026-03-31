@@ -22,9 +22,10 @@ type RefreshCommand struct {
 
 // LogoutCommand represents the data required for logout.
 type LogoutCommand struct {
-	UserID    int64  `json:"userid"`
-	SessionID string `json:"sessionid"`
-	JTI       string `json:"jti"`
+	UserID     int64  `json:"userid"`
+	SessionID  string `json:"sessionid"`
+	RefreshJTI string `json:"refresh_jti"`
+	AuthJTI    string `json:"auth_jti"`
 }
 
 // RetrieveSessionsCommand represents the data required for retrieving all sessions.

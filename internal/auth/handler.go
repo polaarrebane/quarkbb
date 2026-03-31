@@ -19,13 +19,15 @@ import (
 type handler struct {
 	svc       Service
 	validator validator.Validator
+	revoked   RevokedTokensStorage
 }
 
 // NewHandler creates a new authentication HTTP handler.
-func NewHandler(svc Service, val validator.Validator) Handler {
+func NewHandler(svc Service, val validator.Validator, revoked RevokedTokensStorage) Handler {
 	return &handler{
 		svc:       svc,
 		validator: val,
+		revoked:   revoked,
 	}
 }
 
@@ -115,28 +117,37 @@ func (h *handler) Refresh(w http.ResponseWriter, r *http.Request) {
 // Logout handles POST /api/v1/auth/logout requests.
 func (h *handler) Logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	claims, err := extractRefreshClaims(ctx)
+	refreshClaims, err := extractRefreshClaims(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	sessionID := claims.SessionID
-	jti := claims.ID
-	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	sessionID := refreshClaims.SessionID
+	refreshJti := refreshClaims.ID
+	userID, err := strconv.ParseInt(refreshClaims.Subject, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
+	authClaims, err := extractAuthClaims(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	authJti := authClaims.ID
+
 	if err := h.svc.Logout(r.Context(), model.LogoutCommand{
-		UserID:    userID,
-		JTI:       jti,
-		SessionID: sessionID,
+		UserID:     userID,
+		AuthJTI:    authJti,
+		RefreshJTI: refreshJti,
+		SessionID:  sessionID,
 	}); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
+	fmt.Printf("logout: %s\n", authJti)
 	h.unsetRefreshTokenCookie(w)
 	h.unsetCsrfTokenCookie(w)
 }

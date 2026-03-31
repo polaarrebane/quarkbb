@@ -44,6 +44,7 @@ type serviceImpl struct {
 	tokens   repository.RefreshTokenRepository
 	sessions repository.SessionRepository
 	jwt      security.JWTService
+	revoked  RevokedTokensStorage
 }
 
 // NewService creates a new instance of the authentication service.
@@ -52,12 +53,14 @@ func NewService(
 	rt repository.RefreshTokenRepository,
 	sr repository.SessionRepository,
 	js security.JWTService,
+	rts RevokedTokensStorage,
 ) Service {
 	return &serviceImpl{
 		users:    ru,
 		tokens:   rt,
 		sessions: sr,
 		jwt:      js,
+		revoked:  rts,
 	}
 }
 
@@ -217,7 +220,7 @@ func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) erro
 		return errRefreshFailed
 	}
 
-	if err := svc.checkIfRefreshTokenIsUsed(ctx, cmd.JTI); err != nil {
+	if err := svc.checkIfRefreshTokenIsUsed(ctx, cmd.RefreshJTI); err != nil {
 		// todo: revoke all sessions
 		return fmt.Errorf("token is used: %w", err)
 	}
@@ -226,8 +229,11 @@ func (svc serviceImpl) Logout(ctx context.Context, cmd model.LogoutCommand) erro
 	if err := svc.sessions.CloseSession(ctx, cmd.SessionID); err != nil {
 		return fmt.Errorf("database error: %w", err)
 	}
-	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.JTI); err != nil {
+	if err := svc.tokens.MarkTokenAsUsed(ctx, cmd.RefreshJTI); err != nil {
 		return fmt.Errorf("database error: %w", err)
+	}
+	if err := svc.revoked.Add(cmd.AuthJTI); err != nil {
+		return fmt.Errorf("memcached error: %w", err)
 	}
 
 	return nil

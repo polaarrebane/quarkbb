@@ -3,6 +3,7 @@ module codeberg.org/ronia/quarkbb
 go 1.26.1
 
 require (
+	github.com/bradfitz/gomemcache v0.0.0-20250403215159-8d39553ac7cf // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect

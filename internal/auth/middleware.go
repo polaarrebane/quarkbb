@@ -17,6 +17,9 @@ const (
 	sessionIDContextKey     contextKey = "sessionIDContextKey"
 )
 
+// JwtAuthTokenMiddleware extracts the bearer token
+// from the `Authorization` handler and adds it's claims
+// to the context.
 func (h *handler) JwtAuthTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, err := extractBearerToken(r)
@@ -31,11 +34,24 @@ func (h *handler) JwtAuthTokenMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		tokenStatus, err := h.revoked.Check(claims.ID)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if tokenStatus == RevokedTokenStatus {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), authClaimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
+// JwtRefreshTokenMiddleware extracts the refresh token
+// from the `refresh_token` cookie and adds it's claims
+// to the context.
 func (h *handler) JwtRefreshTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		refreshTokenCookie, err := r.Cookie(refreshTokenCookieName)
@@ -70,6 +86,8 @@ func (h *handler) JwtRefreshTokenMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// SessionIDCtx extracts URL param `sessionID` from path
+// and adds it to the context.
 func (h *handler) SessionIDCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sessionID := chi.URLParam(r, "sessionID")

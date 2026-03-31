@@ -14,6 +14,7 @@ type Config interface {
 	Port() string
 	Keys() string
 	DSN() string
+	Memcached() string
 	AuthTokenTTL() int
 	RefreshTokenTTL() int
 }
@@ -24,6 +25,7 @@ type configImpl struct {
 	host            string
 	port            string
 	keys            string
+	memcached       string
 	authTokenTTL    int
 	refreshTokenTTL int
 }
@@ -45,6 +47,7 @@ func New() (Config, error) {
 	appKey := viper.GetString("app_key")
 	authTokenTTL := viper.GetInt("auth_token_ttl")
 	refreshTokenTTL := viper.GetInt("refresh_token_ttl")
+	memcached := viper.GetString("memcached")
 
 	return &configImpl{
 		appKey:          appKey,
@@ -54,6 +57,7 @@ func New() (Config, error) {
 		keys:            keys,
 		authTokenTTL:    authTokenTTL,
 		refreshTokenTTL: refreshTokenTTL,
+		memcached:       memcached,
 	}, nil
 }
 
@@ -82,6 +86,11 @@ func (c *configImpl) Keys() string {
 // Used for establishing connection to the PostgreSQL database.
 func (c *configImpl) DSN() string {
 	return c.dsn
+}
+
+// Memcached returns connection string for memcached.
+func (c *configImpl) Memcached() string {
+	return c.memcached
 }
 
 // AuthTokenTTL returns the auth token ttl in seconds.

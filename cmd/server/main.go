@@ -19,6 +19,7 @@ import (
 	"codeberg.org/ronia/quarkbb/internal/router"
 	"codeberg.org/ronia/quarkbb/internal/security"
 	"codeberg.org/ronia/quarkbb/internal/validator"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -51,19 +52,22 @@ func main() {
 	}
 	defer pool.Close()
 
+	mc := memcache.New(appConfig.Memcached())
+
 	sqlcQueries := postgres.New(pool)
 	authRepo := repository.NewUserRepository(sqlcQueries)
 	rtRepo := repository.NewRefreshTokenRepository(sqlcQueries)
 	sessionsRepo := repository.NewSessionRepository(sqlcQueries)
+	revokedTokensStorage := auth.NewRevokedTokensStorage(mc)
 
 	js, err := security.NewJWTService(appConfig)
 	if err != nil {
 		log.Fatalf("jwt service: %v", err)
 	}
-	authSvc := auth.NewService(authRepo, rtRepo, sessionsRepo, js)
+	authSvc := auth.NewService(authRepo, rtRepo, sessionsRepo, js, revokedTokensStorage)
 	val := validator.New()
 
-	authHandler := auth.NewHandler(authSvc, val)
+	authHandler := auth.NewHandler(authSvc, val, revokedTokensStorage)
 
 	r := router.NewRouter(authHandler)
 

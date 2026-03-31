@@ -16,6 +16,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  memcached:
+    image: memcached:trixie
+    ports:
+      - "11211:11211"
 
 volumes:
   postgres_data:
